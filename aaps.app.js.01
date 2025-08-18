@@ -1,0 +1,61 @@
+// aaps.app.js
+const SETTINGS_FILE = 'aaps.settings.json';
+let settings = require('Storage').readJSON(SETTINGS_FILE, 1) || {};
+
+// --- Data Stores --- (Global for simplicity)
+let statusData = { sgv: "---", iob: "---", cob: "---", trend: "" };
+
+function draw() {
+  // Your existing drawing logic from the nightscout clock can go here.
+  // It should be modified to use the `statusData` object.
+  g.reset().clear();
+  Bangle.loadWidgets();
+  Bangle.drawWidgets();
+  
+  g.setFont("Vector", 40).setFontAlign(0, 0);
+  g.drawString(statusData.sgv, g.getWidth()/2, g.getHeight()/2 - 20);
+  g.drawString(statusData.trend, g.getWidth()/2 + 60, g.getHeight()/2 - 20);
+  
+  g.setFont("6x8", 2).setFontAlign(0, 0);
+  g.drawString("IOB: " + statusData.iob, g.getWidth()/2, g.getHeight()/2 + 20);
+  g.drawString("COB: " + statusData.cob, g.getWidth()/2, g.getHeight()/2 + 40);
+  
+  // Draw time at the bottom
+  let d = new Date();
+  let time = require("locale").time(d,1);
+  g.setFont("6x8", 2).setFontAlign(0,1).drawString(time, g.getWidth()/2, g.getHeight());
+}
+
+// --- Event Handlers ---
+GB.on('json', (msg) => {
+  if (msg.t === "intent" && msg.data) {
+    let data = JSON.parse(msg.data);
+    if (data.eventType === "StatusUpdate") {
+      statusData.sgv = data.sgv || "---";
+      statusData.iob = data.iob || "---";
+      statusData.cob = data.cob || "---";
+      statusData.trend = data.trend || "";
+      draw();
+    }
+  }
+});
+
+// --- UI Interaction ---
+Bangle.setUI("clockupdown", {
+    mode: "custom",
+    touch: (n, xy) => { // Launch menu on any tap
+        Bangle.buzz();
+        Bangle.showClock();
+        load('aaps-menu.app.js');
+    },
+    swipe: (dir) => {
+        if (dir === 1 && settings.swipeDown) { load(settings.swipeDown + ".app.js"); }
+        else if (dir === -1 && settings.swipeUp) { load(settings.swipeUp + ".app.js"); }
+    }
+});
+
+// Load widgets and draw the screen
+g.clear();
+Bangle.loadWidgets();
+Bangle.drawWidgets();
+draw();

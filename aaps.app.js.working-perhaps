@@ -1,0 +1,95 @@
+// --- Global Data Stores ---
+let aapsData = {
+  sgv: "---", trend: "→", iob: "---", cob: "---",
+  glucoseHistory: [], basalHistory: [], tempHistory: [], treatmentHistory: []
+};
+
+// --- Graphics and Layout Constants ---
+const screen = { w: g.getWidth(), h: g.getHeight(), center_x: g.getWidth()/2 };
+
+// --- Main Drawing Function ---
+function draw() {
+  console.log("Draw called. SGV:", aapsData.sgv, "History points:", aapsData.glucoseHistory.length);
+  g.reset();
+  g.clear();
+  Bangle.drawWidgets();
+
+  // Draw Current Data
+  g.setFontAlign(0, 0).setFont("Vector", 40).drawString(aapsData.sgv, screen.center_x, 40);
+  g.setFont("6x8", 2).drawString(aapsData.trend, screen.center_x + 55, 30);
+  g.setFontAlign(-1, 0).setFont("6x8", 2);
+  g.drawString("IOB: " + aapsData.iob, 10, screen.h - 40);
+  g.drawString("COB: " + aapsData.cob, 10, screen.h - 20);
+
+  // Draw Graph
+  drawGraph();
+}
+
+// --- Helper Drawing Function ---
+function drawGraph() {
+  const now = Date.now();
+  const threeHoursAgo = now - (3 * 60 * 60 * 1000);
+  const graphRect = { x: 0, y: 70, w: screen.w, h: screen.h - 120 };
+
+  g.setColor(0.5, 0.5, 0.5).drawRect(graphRect.x, graphRect.y, graphRect.x + graphRect.w - 1, graphRect.y + graphRect.h - 1);
+
+  if (aapsData.glucoseHistory && aapsData.glucoseHistory.length > 1) {
+    const minSgv = 40; const maxSgv = 250;
+    let points = aapsData.glucoseHistory.map(p => {
+      let x = graphRect.x + graphRect.w * (p.ts - threeHoursAgo) / (3 * 60 * 60 * 1000);
+      let y = graphRect.y + graphRect.h - ((p.sgv - minSgv) / (maxSgv - minSgv) * graphRect.h);
+      return [Math.round(x), Math.round(y)];
+    });
+    g.setColor(1,1,1).drawPoly(points, false);
+  }
+}
+
+// --- Communication and Lifecycle ---
+
+function setupCommunication() {
+  GB.on('json', (msg) => {
+    if (msg.t !== "json" || !msg.data) return;
+    try {
+      const data = JSON.parse(msg.data);
+      console.log("Received:", JSON.stringify(data).substr(0, 100)); // Log first 100 chars
+
+      let needsRedraw = false;
+      switch (data.eventType) {
+        case "StatusUpdate":
+          aapsData.sgv = data.sgv || "---"; aapsData.trend = data.trend || "→";
+          aapsData.iob = data.iob || "---"; aapsData.cob = data.cob || "---";
+          needsRedraw = true; break;
+        case "SingleBgUpdate":
+          aapsData.sgv = data.sgv || "---"; aapsData.trend = data.trend || "→";
+          needsRedraw = true; break;
+        case "GraphData":
+          aapsData.glucoseHistory = data.history || [];
+          needsRedraw = true; break;
+        case "TreatmentData":
+          aapsData.treatmentHistory = data.treatments || [];
+          needsRedraw = true; break;
+        // ... other cases
+      }
+      if (needsRedraw && Bangle.isLCDOn()) draw();
+    } catch (e) {
+      console.log("Watch JSON Error:", e);
+    }
+  });
+}
+
+// --- Initial Setup ---
+function start() {
+  Bangle.setUI("clock");
+  Bangle.loadWidgets();
+  
+  setupCommunication();
+
+  g.clear();
+  Bangle.drawWidgets();
+  g.setFontAlign(0,0).setFont("6x8", 2).setColor(1,1,1);
+  g.drawString("Waiting for AAPS...", screen.center_x, g.getHeight()/2);
+}
+
+// Run the setup
+start();
+

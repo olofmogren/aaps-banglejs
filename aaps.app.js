@@ -603,8 +603,8 @@ function handleConfirmAction(confirmFile) {
   }).then(confirmed => {
     if (confirmed) {
       console.log("User confirmed. Sending action.");
-      // Assumes you have a global sendAAPSCommand function
-      sendAAPSCommand(confirmFile.returnCommandType, confirmFile.returnCommandJson);
+      // Assumes you have a global sendCommand function
+      sendCommand(confirmFile.returnCommandType, confirmFile.returnCommandJson);
       E.showMessage("Confirmed.\nSending...");
       setTimeout(() => { if (Bangle.isLCDOn()) draw(); }, 1500);
     } else {
@@ -615,25 +615,28 @@ function handleConfirmAction(confirmFile) {
   });
 }
 
-// --- CHECK FOR COMMANDS FROM THE MENU ---
+
 function checkAppCommands() {
   const cmdFile = require("Storage").readJSON(COMMAND_FILE, 1);
   if (cmdFile) {
-    // We found a command. Erase the file first to acknowledge it.
     require("Storage").erase(COMMAND_FILE);
+    console.log(`Found command: ${cmdFile.command}`);
 
-    console.log("Found command from menu:", cmdFile.command);
+    // The data is already prepared by the menu app.
+    // We just need to send it to the phone.
+    sendCommand(cmdFile.command, cmdFile.data);
 
-    // Route the command
-    if (cmdFile.command === "startBolusFlow") {
-      // Assumes you have a showTreatmentCarbs function to start the UI flow
-      showTreatmentCarbs();
-    }
-    // Add other commands here, e.g., "refreshData"
+    // After sending, show a "waiting" message.
+    // The confirmation will be handled by the queue processor.
+    E.showMessage("Sending...\nWaiting for\nconfirmation.");
+
+    // Set a timeout to clear the message and go back to the clock
+    // in case the confirmation never arrives.
+    setTimeout(() => {
+        if (Bangle.isLCDOn()) draw();
+    }, 10000);
   }
 }
-
-
 
 // === INITIAL SETUP ===
 function start() {

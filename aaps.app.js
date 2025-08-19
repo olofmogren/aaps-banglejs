@@ -9,18 +9,19 @@ const H = g.getHeight();
 const W = g.getWidth();
 let drawTimeout;
 let eventQueueInterval;
-
+const COMMAND_FILE = "aaps.cmd.json";
+let commandCheckInterval;
 // === EVENT QUEUE PROCESSING ===
 const QUEUE_FILE = "aaps.in.q";
 
 
 // === GLOBAL DATA and CONSTANTS ===
 let currentStatusData = { sgv: "---", delta: "---", trend: "FLAT", iob: "---", cob: "---", ts: 0 };
-let recentGlucoseHistory = {}
-let historyData = { glucose: [], treatments: [], basals: [] };
+let historyData = { glucose: [], glucose_ten_minutes: [], treatments: [], basals: [] };
 let clockInterval; // To keep track of the main clock timer
 let settings;
 let tapTimeout; // to track the tap timer for double-taps
+let lastStepCount = 0;
 
 // === DATA HANDLING AND DRAWING ===
 
@@ -276,10 +277,15 @@ function drawBottomRightGraph(x, y, w, h) {
   const graphW = w - (margin * 2);
   const MIN_MMOL_SCALE = 2.0;
   const MAX_MMOL_SCALE = 14.0;
+  const BASELINE_BG = y+h-24;
+  const BASELINE_BASALS = y+h-12;
+  const BASELINE_BOLUSES = y+h-16;
+  const BASAL_SCALE = 16.0; // Define max basal scale
+  
   let threshColor = g.getBgColor() == "#ffffff" ? [0.8,0,0] : [0,0,0];
   g.setColor.apply(g, threshColor);
-  let highY = y + h - (((HIGH_MMOL - MIN_MMOL_SCALE) / (MAX_MMOL_SCALE - MIN_MMOL_SCALE)) * h);
-  let lowY = y + h - (((LOW_MMOL - MIN_MMOL_SCALE) / (MAX_MMOL_SCALE - MIN_MMOL_SCALE)) * h);
+  let highY = BASELINE_BG - (((HIGH_MMOL - MIN_MMOL_SCALE) / (MAX_MMOL_SCALE - MIN_MMOL_SCALE)) * h);
+  let lowY = BASELINE_BG - (((LOW_MMOL - MIN_MMOL_SCALE) / (MAX_MMOL_SCALE - MIN_MMOL_SCALE)) * h);
   g.drawLine(graphX, highY, graphX + graphW, highY);
   g.drawLine(graphX, lowY, graphX + graphW, lowY);
 
@@ -299,42 +305,40 @@ function drawBottomRightGraph(x, y, w, h) {
     // Set a minimum maxBasal to avoid division by zero
     if (maxBasal === 0) maxBasal = 1.0;
 
-    let lastY = y + h;
+    let lastY = BASELINE_BASALS;
     let lastVerticalBarX = graphX; // Start at the beginning of the graph
 
     // Second loop to draw the basal bars
     for (let i = 0; i < historyData.basals.length; i++) {
       let currentPoint = historyData.basals[i];
       // Corrected: Removed semicolon
-      let nextPoint = (i + 1 < historyData.basals.length) ? historyData.basals[i+1] : { ts: now, rate: currentPoint.rate };
+      let nextPoint = (i + 1 < historyData.basals.length) ? historyData.basals[i+1] : { ts: now, rate: 0.0 };
 
       // Corrected: Use ninetyMinutesMillis for time scaling
       let startX = graphX + graphW * (currentPoint.ts - graphStartTime) / ninetyMinutesMillis;
       if (startX < graphX) continue;
       let endX = graphX + graphW * (nextPoint.ts - graphStartTime) / ninetyMinutesMillis;
 
-      const MAX_BASAL_AS_MMOL = 8.0; // Define max basal scale
-      let equivalentMmol = (currentPoint.rate / maxBasal) * MAX_BASAL_AS_MMOL;
-      let barY = y + h - (((equivalentMmol - MIN_MMOL_SCALE) / (MAX_MMOL_SCALE - MIN_MMOL_SCALE)) * h);
+      let barHeight = (currentPoint.rate / maxBasal) * BASAL_SCALE;
+      let barY = BASELINE_BASALS - barHeight;
 
       startX = Math.max(graphX, startX);
       endX = Math.min(graphX + graphW, endX);
 
-      g.setColor("#00FFFF").fillRect(startX, barY, endX, y + h);
+      g.setColor("#00FFFF").fillRect(startX, barY, endX, BASELINE_BASALS);
       g.setColor("#0000FF").drawLine(startX, barY, endX, barY);
 
       if (lastVerticalBarX < startX) {
         g.drawLine(startX, lastY, startX, barY);
       }
-
-      // Corrected: use historyData.basals.length
+      
       if (i + 1 < historyData.basals.length) {
-        let nextEquivalentMmol = (nextPoint.rate / maxBasal) * MAX_BASAL_AS_MMOL;
-        let nextPointBarY = y + h - (((nextEquivalentMmol - MIN_MMOL_SCALE) / (MAX_MMOL_SCALE - MIN_MMOL_SCALE)) * h);
+        let nextBarHeight = (nextPoint.rate / maxBasal) * BASAL_SCALE;
+        let nextPointBarY = BASELINE_BASALS - nextBarHeight;
         g.drawLine(endX, barY, endX, nextPointBarY);
         lastVerticalBarX = endX;
       } else {
-        g.drawLine(endX, barY, endX, y + h);
+        g.drawLine(endX, barY, endX, BASELINE_BASALS);
       }
 
       lastY = barY;
@@ -348,23 +352,18 @@ function drawBottomRightGraph(x, y, w, h) {
       if (t.insulin) {
           let bolusX = graphX + graphW * (start - graphStartTime) / ninetyMinutesMillis;
           let triangle_half_width = 3;
-          //if (bolusX > graphX && bolusX < graphX + graphW){
-          //     g.fillCircle(bolusX, y + radius + 1, radius);
-          //}
           if (bolusX > graphX && bolusX < graphX + graphW) {
 
               // 1. Define the 3 vertices of the triangle
-              // The triangle will point downwards, with its tip at the bottom.
-              const y_top = y + h - 12; // Top top of the triangle
+              const y_top = BASELINE_BOLUSES - 12; // Top top of the triangle
               const y_bottom = y_top + 0.866 * triangle_half_width * 2; // Bottom of the triangle (Pythagoras)
 
               const vertices = [
-                bolusX, y_top,              // Vertex 1: Top tip (at the center X)
-                bolusX - triangle_half_width, y_bottom,   // Vertex 2: Top-left corner
-                bolusX + triangle_half_width, y_bottom    // Vertex 3: Top-right corner
+                bolusX, y_top,
+                bolusX - triangle_half_width, y_bottom,  
+                bolusX + triangle_half_width, y_bottom
               ];
 
-              // 2. Draw the filled triangle
               g.setColor("#0000FF");
               g.fillPoly(vertices);
           }
@@ -373,13 +372,14 @@ function drawBottomRightGraph(x, y, w, h) {
   
   // 3. glucose history on top of all.
   if (historyData.glucose.length >= 1) {
-    let diameter = 2;
+    //let diameter = 3;
+    let radius = 3;
     for (let i = 0; i < historyData.glucose.length - 1; i++) {
         let p1 = historyData.glucose[i];
         let p1_mmol = p1.sgv / MGDL_TO_MMOL;
-        let x1 = graphX + graphW * (new Date(p1.ts).getTime() - graphStartTime) / ninetyMinutesMillis;
-        let y1 = y + h - (((p1_mmol - MIN_MMOL_SCALE) / (MAX_MMOL_SCALE - MIN_MMOL_SCALE)) * h);
-        if (x1 >= graphX && x1 <= graphX+graphW) {
+        let x = graphX + graphW * (new Date(p1.ts).getTime() - graphStartTime) / ninetyMinutesMillis;
+        let y = BASELINE_BG - (((p1_mmol - MIN_MMOL_SCALE) / (MAX_MMOL_SCALE - MIN_MMOL_SCALE)) * h);
+        if (x >= graphX && x <= graphX+graphW) {
           if (p1_mmol < LOW_MMOL) {
             g.setColor("#FF0000");
           }
@@ -389,7 +389,8 @@ function drawBottomRightGraph(x, y, w, h) {
           else {
              g.setColor("#00FF00");
           }
-          g.fillCircle(x1, y1, diameter);
+          //g.fillCircle(x, y, diameter);
+          g.fillPoly([x-radius,y-radius/2, x-radius,y+radius/2, x-radius/2,y+radius, x+radius/2,y+radius,x+radius,y+radius/2,x+radius,y-radius/2,x+radius/2,y-radius,x-radius/2,y-radius]);
         }
       
     }
@@ -469,7 +470,43 @@ function loadSettings() {
     swipeLeft: '',
     swipeRight: '',
     swipeBottomUp: '',
+    uploadHR: false,
+    uploadSteps: false,
   };
+}
+
+
+function sendHeartRate() {
+  // Bangle.getHealthStatus("day") is not ideal for real-time HRM.
+  // A better approach is to turn on the HRM and listen for events.
+  // For simplicity, we'll use a direct reading here.
+  if (!settings.uploadHR) return;
+  Bangle.setHRMPower(1); // Turn on the HRM
+  Bangle.on('HRM', (hrm) => {
+    Bangle.setHRMPower(0); // Turn it off immediately to save power
+
+    // Only send if the confidence is high and the value has changed
+    if (hrm.confidence > 80 && hrm.bpm !== lastHeartRate) {
+      lastHeartRate = hrm.bpm;
+      console.log("Sending HR:", hrm.bpm);
+      const url = `http://127.0.0.1:28891/heartrate?bpm=${hrm.bpm}`;
+      Bangle.http(url).catch(e => console.log("HR upload error:", e));
+    }
+  });
+}
+
+function sendStepCount() {
+  // Get the current step count from the pedometer
+  if (!settings.uploadSteps) return;
+
+  const steps = Bangle.getHealthStatus("day").steps;
+
+  if (steps !== lastStepCount) {
+    lastStepCount = steps;
+    console.log("Sending Steps:", steps);
+    const url = `http://127.0.0.1:28891/steps?steps=${steps}`;
+    Bangle.http(url).catch(e => console.log("Steps upload error:", e));
+  }
 }
 
 function processQueue() {
@@ -539,12 +576,16 @@ function handleSingleEvent(event) {
     case "GlucoseHistoy":
       updateHistory(event.glucose, null, null);
       return true;
-    case "TreatmentsHistoy":
+    case TreatmentsHistoy":
       updateHistory(null, event.treatments, null);
       return true;
     case "BasalsHistoy":
       updateHistory(null, null, event.basals);
       return true;
+    case "ConfirmAction":
+      // When a confirmation event arrives, handle it directly.
+      handleConfirmAction(event);
+      return false;
       break;
     // ... add other cases
   }
@@ -553,8 +594,45 @@ function handleSingleEvent(event) {
 }
 
 
-// Let's use the SUPERIOR multi-file model we arrived at. It is the best.
-// This is the simplest and most robust.
+function handleConfirmAction(confirmFile) {
+  Bangle.buzz();
+
+  E.showPrompt(confirmFile.message, {
+    title: confirmFile.title,
+    buttons: {"Confirm": true, "Cancel": false}
+  }).then(confirmed => {
+    if (confirmed) {
+      console.log("User confirmed. Sending action.");
+      // Assumes you have a global sendAAPSCommand function
+      sendAAPSCommand(confirmFile.returnCommandType, confirmFile.returnCommandJson);
+      E.showMessage("Confirmed.\nSending...");
+      setTimeout(() => { if (Bangle.isLCDOn()) draw(); }, 1500);
+    } else {
+      console.log("User cancelled action.");
+      E.showMessage("Cancelled.");
+      setTimeout(() => { if (Bangle.isLCDOn()) draw(); }, 1500);
+    }
+  });
+}
+
+// --- CHECK FOR COMMANDS FROM THE MENU ---
+function checkAppCommands() {
+  const cmdFile = require("Storage").readJSON(COMMAND_FILE, 1);
+  if (cmdFile) {
+    // We found a command. Erase the file first to acknowledge it.
+    require("Storage").erase(COMMAND_FILE);
+
+    console.log("Found command from menu:", cmdFile.command);
+
+    // Route the command
+    if (cmdFile.command === "startBolusFlow") {
+      // Assumes you have a showTreatmentCarbs function to start the UI flow
+      showTreatmentCarbs();
+    }
+    // Add other commands here, e.g., "refreshData"
+  }
+}
+
 
 
 // === INITIAL SETUP ===
@@ -574,6 +652,23 @@ function start() {
   setupGestures();
 
   draw();
+
+  // --- ADD TIMERS FOR SENSOR UPLOADS ---
+  // Send heart rate every 3 minutes
+  setInterval(sendHeartRate, 3 * 60 * 1000);
+  // Send step count every 10 minutes
+  setInterval(sendStepCount, 10 * 60 * 1000);
+
+
+  // --- COMMAND CHECKER INTERVAL ---
+  commandCheckInterval = setInterval(checkAppCommands, 2000); // Check for commands every 2s
+
+  // Send initial values on startup
+  setTimeout(() => {
+    sendHeartRate();
+    sendStepCount();
+  }, 2000); // Wait 2s for things to settle
+
 }
 
 // Run the setup

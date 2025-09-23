@@ -9,92 +9,122 @@ const H = g.getHeight();
 const W = g.getWidth();
 let drawTimeout;
 let eventQueueInterval;
-const COMMAND_FILE = "aaps.cmd.json";
 let commandCheckInterval;
 // === EVENT QUEUE PROCESSING ===
-const QUEUE_FILE = "aaps.in.q";
+const STATUS_FILE = "aaps.current.status";
+const HISTORY_BG_FILE = "aaps.history.bg";
+const HISTORY_INSULIN_FILE = "aaps.history.insulin";
+const HISTORY_BASALS_FILE = "aaps.history.basals";
 
+const EVENT_FILE_PREFIX = "aaps.events."
+const MAX_NUMBER_OF_EVENT_FILES = 5
 
 // === GLOBAL DATA and CONSTANTS ===
-let currentStatusData = { sgv: "---", delta: "---", trend: "FLAT", iob: "---", cob: "---", ts: 0 };
-let historyData = { glucose: [], glucose_ten_minutes: [], treatments: [], basals: [] };
+let currentStatusData = { sgv: "---", delta: "---", trend: "FLAT", iob: "---", cob: "---", basal: '---', ts: 0 };
+let historyData = { glucose: [], insulin: [], carbs: [], basals: [], glucoseUpdated: -1, insulinUpdated: -1, carbsUpdated: -1, basalsUpdated: -1, stale: true };
 let clockInterval; // To keep track of the main clock timer
 let settings;
 let tapTimeout; // to track the tap timer for double-taps
 let lastStepCount = 0;
+let lastReadEventFile = -1
+let dialogActive = false; //hinders the watch face from updating the screen.
+let lastDrawMinutes = -1;
 
 // === DATA HANDLING AND DRAWING ===
 
-// ** OPTIMIZED: This function ONLY reads the lightweight files. **
-function updateCurrentData() {
-  let needsRedraw = false;
-
-  const statusFile = require("Storage").readJSON("aaps_status.json", 1);
-  if (statusFile && statusFile.ts > currentStatusData.ts) {
-    currentStatusData = statusFile;
-    needsRedraw = true;
+/**
+ * Inserts an element into a sorted array while maintaining the sort order.
+ * The array and the element must have a numeric 'ts' (timestamp) property.
+ * The array is assumed to be already sorted by 'ts' in ascending order.
+ *
+ * It performs a fast check for the common case (inserting at the end)
+ * and falls back to a robust binary search for all other insertions.
+ *
+ * @param {Array<Object>} sortedArray The array to insert into (will be modified).
+ * @param {Object} newElement The new element to insert, containing a 'ts' property.
+ */
+function insertSorted(sortedArray, newElement, deleteUntilTs, onlyIfChanged, key) {
+  // 1. Handle the edge case of an empty array.
+  //console.log("insertSorted: "+deleteUntilTs)
+ 
+  insertSortedHelper(sortedArray, newElement, onlyIfChanged, key);
+  deleteUntil(sortedArray, deleteUntilTs);
+}
+function insertSortedHelper(sortedArray, newElement, onlyIfChanged, key) {
+  // 1. Handle the edge case of an empty array.
+  if (sortedArray.length === 0) {
+    sortedArray.push(newElement);
+    return;
   }
 
-  // We only redraw if something new was loaded and the screen is on.
-  if (needsRedraw && Bangle.isLCDOn()) {
-    draw();
+  // 2. --- The Fast Path Optimization ---
+  // Check if the new element belongs at the very end of the array.
+  
+  const lastTS = lastTimestamp(sortedArray);
+  //console.log("inserting "+newElement.ts+". last ptev:"+lastTS);
+  if (newElement.ts >= lastTS) {
+    if (newElement.ts === lastTS) {
+        sortedArray[sortedArray.length - 1] = newElement; // Update
+    } else {
+      if (!onlyIfChanged || sortedArray[sortedArray.length-1][key] != newElement[key]) {
+        sortedArray.push(newElement); // Append
+      }
+    }
+    return;
+  }
+
+  // --- The Binary Search Path (for out-of-order or in-between data) ---
+  let low = 0;
+  let high = sortedArray.length - 1;
+
+  while (low <= high) {
+    // Find the middle index
+    let mid = Math.floor((low + high) / 2);
+    let midElement = sortedArray[mid];
+
+    // Check for an exact timestamp match to update in place
+    if (newElement.ts === midElement.ts) {
+      sortedArray[mid] = newElement; // Overwrite existing element
+      return;
+    }
+
+    if (newElement.ts < midElement.ts) {
+      high = mid - 1;
+    } else { // newElement.ts > midElement.ts
+      low = mid + 1;
+    }
+  }
+  
+  // 4.
+  // After the loop, 'low' is the correct insertion index.
+  const insertIndex = low;
+
+  // Insert the element at the found index using .splice()
+  if (!onlyIfChanged || insertIndex == 0 || sortedArray[insertIndex-1][key] != newElement[key] || insertIndex == sortedArray.length || sortedArray[insertIndex] != newElement) {
+    sortedArray.splice(insertIndex, 0, newElement);
   }
 }
-
-
-function updateHistory(glucose, treatments, basals) {
-  let now = new Date().getTime();
-  let ninetyMinutesMillis = (90 * 60 * 1000);
-  let historyStartTime = now - ninetyMinutesMillis;
-  if (glucose != null && glucose.length > 0) {
-    let tempMap = {}
-    historyData.glucose.forEach(g => {
-      tempMap[g.ts] = g;
-    });
-    glucose.forEach(g => {
-      tempMap[g.ts] = g;
-    });
-    deleteOldHistoryEntries(tempMap, historyStartTime);
-    historyData.glucose = Object.values(tempMap).sort((a, b) => a.ts - b.ts);
-  }
-  if (treatments != null && treatments.length > 0) {
-    let tempMap = {}
-    historyData.treatments.forEach(g => {
-      tempMap[g.ts] = g;
-    });
-    treatments.forEach(g => {
-      tempMap[g.ts] = g;
-    });
-    deleteOldHistoryEntries(tempMap, historyStartTime);
-    historyData.treatments = Object.values(tempMap).sort((a, b) => a.ts - b.ts);
-  }
-  if (basals != null && basals.length > 0) {
-    let tempMap = {}
-    historyData.basals.forEach(g => {
-      tempMap[g.ts] = g;
-    });
-    basals.forEach(g => {
-      tempMap[g.ts] = g;
-    });
-    deleteOldHistoryEntries(tempMap, historyStartTime);
-    historyData.basals = Object.values(tempMap).sort((a, b) => a.ts - b.ts);
+function deleteUntil(sortedArray, deleteUntilTs){
+  if (deleteUntilTs!==undefined && sortedArray.length > 0) {
+    if (sortedArray[0].ts === undefined){
+      // this can probably be removed
+      console.log("undefined in sortedArray!");
+      console.log(JSON.stringify(sortedArray));
+    }
+    while (sortedArray.length > 0 && sortedArray[0].ts < deleteUntilTs ) {
+      //console.log("deleting "+sortedArray[0].ts+". (until "+deleteUntilTs+")");
+      sortedArray.shift();
+    }
   }
 }
-
-function deleteOldHistoryEntries(obj, thresholdTimestamp) {
-  // THE CRITICAL FIX: Use Object.keys() to get an array of keys from the object.
-  const allKeys = Object.keys(obj);
-
-  const keysToDelete = allKeys.filter(key => key < thresholdTimestamp);
-
-  // The 'delete' keyword is the correct way to remove a property from an object.
-  keysToDelete.forEach(key => delete obj[key]);
-
-}
-
 // === MASTER DRAW FUNCTION ===
 // This function is very fast because it doesn't read any files.
 function draw() {
+  if (dialogActive) {
+    //if we are currently showing an active dialog, we should not update the screen.
+    return;
+  }
+
   // --- This is how we keep the time updated ---
   if (clockInterval) clearInterval(clockInterval);
   clockInterval = setTimeout(() => {
@@ -103,6 +133,8 @@ function draw() {
     }
   }, 60000 - (Date.now() % 60000));
   // ---
+  
+  lastDrawMinutes = new Date().getMinutes();
 
   g.reset();
   g.clear();
@@ -126,7 +158,7 @@ function drawLeftColumn(x, y, w, h) {
 
   if (glucoseMmol >= HIGH_MMOL || glucoseMmol <= LOW_MMOL) textColor = "#F00"; // Red if out of range
 
-  const sgvText = currentStatusData.sgv ? glucoseMmol.toFixed(1) : "---";
+  const sgvText = (currentStatusData.sgv && (glucoseMmol.toString() != "NaN")) ? glucoseMmol.toFixed(1) : "---";
   const mainBgX = x + w / 2;
   const mainBgY = y + 20;
 
@@ -162,7 +194,10 @@ function drawLeftColumn(x, y, w, h) {
   
   g.setColor("#000"); 
   deltaMmol = (Math.round(10*(currentStatusData.delta / MGDL_TO_MMOL))/10).toString();
-  if (deltaMmol[0] != '-') {
+  if (deltaMmol.toString() == "NaN") {
+    deltaMmol = "";
+  }
+  else if (deltaMmol[0] != '-') {
     deltaMmol = "+"+deltaMmol;
   }
   if (!deltaMmol.includes(".")) {
@@ -171,80 +206,119 @@ function drawLeftColumn(x, y, w, h) {
   g.setFont("Vector", 16).drawString(deltaMmol, x + w/2 - 10, y + 48);
   drawTrendArrow(x + w/2 + 25, y + 48, currentStatusData.trend);
 
-  let basal = (currentStatusData.basal != null)?currentStatusData.basal:"---";
-
   g.setFont("Vector", 14).setFontAlign(0, 0);
-  g.drawString("BAS: "+basal, x + w/2, y + h - 48);
-  g.drawString("COB: "+Math.round(currentStatusData.cob).toString(), x + w/2, y + h - 32);
-  g.drawString("IOB: "+currentStatusData.iob.toString(), x + w/2, y + h - 16);
   
-  g.setColor("#F00"); // Red separator line
+  let lengths = historyData.glucose.length + " " + historyData.insulin.length + " " + historyData.basals.length;
+  g.drawString(lengths, x + w/2, y + h - 64);
+  
+  let basal = (currentStatusData.basal != null)?currentStatusData.basal:"---";
+  let cob = (currentStatusData.cob != "---")?Math.round(currentStatusData.cob).toString():"---";
+  let iob = currentStatusData.iob.toString()
+  
+  g.drawString("BAS: "+basal, x + w/2, y + h - 48);
+  g.drawString("COB: "+cob, x + w/2, y + h - 32);
+  g.drawString("IOB: "+iob, x + w/2, y + h - 16);
+  
+  g.setColor("#FF0000"); // Red separator line
   g.fillRect(x + w -1, y, x + w, y + h);
 }
 
-function drawTrendArrow(x, y, type) {
-  g.setColor("#000");
-  const ARROW_SIZE = 8;
-  const T = 2; // shaft thickness
+function hypot(x, y) {
+  return Math.sqrt(x*x + y*y);
+}
 
-  if (!type) return;
-  switch (type) {
+function drawTrendArrow(x, y, slope) {
+  if (!slope) return;
+
+  console.log("trend arrow "+slope)
+
+  // Style (tweak to taste)
+  const COLOR = "#000";
+  const L = 8;          // total arrow length (tail -> tip) in pixels
+  const T = 2;          // shaft thickness
+  const HEAD_L = 4;     // head length along the arrow direction
+  const HEAD_W = 6;     // head base width
+
+  g.setColor(COLOR);
+
+  // --- helper: draw an arrow given a TIP and a DIRECTION vector ---
+  function drawArrowTip(tipX, tipY, dirX, dirY) {
+    console.log("drawing arrow "+tipX+" "+tipY+" "+dirX+" "+dirY);
+    // normalize direction
+    const len = hypot(dirX, dirY) || 1;
+    const ux = dirX / len;
+    const uy = dirY / len;
+
+    // perpendicular (to build thickness + head width)
+    const nx = -uy;
+    const ny = ux;
+
+    // key points along the arrow axis
+    const baseX = tipX - ux * HEAD_L; // start of head (end of shaft)
+    const baseY = tipY - uy * HEAD_L;
+    const tailX = tipX - ux * L;      // tail of shaft
+    const tailY = tipY - uy * L;
+
+    const halfT = T / 2;
+    const halfW = HEAD_W / 2;
+
+    // shaft quad (tail -> base), offset by ±halfT along the normal
+    const s1x = tailX + nx * halfT, s1y = tailY + ny * halfT;
+    const s2x = tailX - nx * halfT, s2y = tailY - ny * halfT;
+    const s3x = baseX - nx * halfT, s3y = baseY - ny * halfT;
+    const s4x = baseX + nx * halfT, s4y = baseY + ny * halfT;
+
+    // head triangle at the tip, base centered at (baseX, baseY)
+    const h1x = tipX,         h1y = tipY;               // tip
+    const h2x = baseX + nx*halfW, h2y = baseY + ny*halfW;
+    const h3x = baseX - nx*halfW, h3y = baseY - ny*halfW;
+
+    // draw (rounded to integers for crisp pixels)
+    function r(v){ return Math.round(v); }
+
+    g.fillPoly([
+      r(s1x), r(s1y),
+      r(s2x), r(s2y),
+      r(s3x), r(s3y),
+      r(s4x), r(s4y)
+    ]);
+
+    g.fillPoly([
+      r(h1x), r(h1y),
+      r(h2x), r(h2y),
+      r(h3x), r(h3y)
+    ]);
+  }
+
+  // Preserve your original *placement conventions*:
+  // - FLAT: tip at (x, y), pointing right
+  // - UP:   tip at (x, y - L), pointing up
+  // - DOWN: tip at (x, y + L), pointing down
+  // - FORTY_FIVE_UP:   tip at (x + L, y - L), pointing 45° up-right
+  // - FORTY_FIVE_DOWN: tip at (x + L, y + L), pointing 45° down-right
+
+  switch (slope) {
     case "FLAT":
-      // head
-      g.fillPoly([x-ARROW_SIZE,y, x,y-ARROW_SIZE/2, x,y+ARROW_SIZE/2, x-ARROW_SIZE,y]);
-      // shaft
-      g.fillRect(x-ARROW_SIZE, y - T/2, x, y + T/2);
+      drawArrowTip(x, y, +1, 0);
       break;
 
     case "UP":
-      // head (tip at y-ARROW_SIZE)
-      g.fillPoly([x, y-ARROW_SIZE, x-ARROW_SIZE/2, y, x+ARROW_SIZE/2, y, x, y-ARROW_SIZE]);
-      // shaft (from base up to head)
-      g.fillRect(x - T/2, y-ARROW_SIZE, x + T/2, y);
+      drawArrowTip(x, y - L, 0, -1);
       break;
 
     case "DOWN":
-      // head (tip at y+ARROW_SIZE)
-      g.fillPoly([x, y+ARROW_SIZE, x-ARROW_SIZE/2, y, x+ARROW_SIZE/2, y, x, y+ARROW_SIZE]);
-      // shaft (from base down to head)
-      g.fillRect(x - T/2, y, x + T/2, y+ARROW_SIZE);
+      drawArrowTip(x, y + L, 0, +1);
       break;
 
     case "FORTY_FIVE_UP":
-      // shaft: slim parallelogram along SW -> NE
-      g.fillPoly([
-        x-ARROW_SIZE,   y+ARROW_SIZE - T,   // tail low
-        x-ARROW_SIZE+T, y+ARROW_SIZE,       // tail high
-        x+ARROW_SIZE,   y-ARROW_SIZE + T,   // near tip high
-        x+ARROW_SIZE-T, y-ARROW_SIZE        // near tip low
-      ]);
-
-      // head: small right-isosceles triangle at tip
-      g.fillPoly([
-        x+ARROW_SIZE,   y-ARROW_SIZE,       // tip
-        x+ARROW_SIZE-4, y-ARROW_SIZE,       // base left
-        x+ARROW_SIZE,   y-ARROW_SIZE+4      // base down
-      ]);
+      drawArrowTip(x + L, y - L, +1, -1);
       break;
 
     case "FORTY_FIVE_DOWN":
-      // shaft: slim parallelogram along NW -> SE
-      g.fillPoly([
-        x-ARROW_SIZE,   y-ARROW_SIZE + T,   // tail high
-        x-ARROW_SIZE+T, y-ARROW_SIZE,       // tail low
-        x+ARROW_SIZE,   y+ARROW_SIZE - T,   // near tip low
-        x+ARROW_SIZE-T, y+ARROW_SIZE        // near tip high
-      ]);
-
-      // head: small right-isosceles triangle at tip
-      g.fillPoly([
-        x+ARROW_SIZE,   y+ARROW_SIZE,       // tip
-        x+ARROW_SIZE-4, y+ARROW_SIZE,       // base left
-        x+ARROW_SIZE,   y+ARROW_SIZE-4      // base up
-      ]);
+      drawArrowTip(x + L, y + L, +1, +1);
       break;
 
-    default: ;
+    default: console.log("no case matched for the arrow");
   }
 }
 
@@ -277,6 +351,7 @@ function drawBottomRightGraph(x, y, w, h) {
   const graphW = w - (margin * 2);
   const MIN_MMOL_SCALE = 2.0;
   const MAX_MMOL_SCALE = 14.0;
+  const BASELINE_XTICKS = y+h-6;
   const BASELINE_BG = y+h-24;
   const BASELINE_BASALS = y+h-12;
   const BASELINE_BOLUSES = y+h-16;
@@ -289,9 +364,30 @@ function drawBottomRightGraph(x, y, w, h) {
   g.drawLine(graphX, highY, graphX + graphW, highY);
   g.drawLine(graphX, lowY, graphX + graphW, lowY);
 
-  let now = new Date().getTime();
+  let nowDate = new Date();
+  let now = Math.round(nowDate.getTime());
   let ninetyMinutesMillis = 90 * 60 * 1000;
   let graphStartTime = now - ninetyMinutesMillis;
+
+
+  // 0. x-ticks
+
+  let lastHourX = x+w-(nowDate.getMinutes()*(w/90));
+  let lastHourLabel = nowDate.getHours()+":00";
+  let previousHourX = lastHourX-60*(w/90);
+  let previousHourLabel = (nowDate.getHours()-1)+":00";
+  g.setColor("#000000");
+  g.setFont("Vector", 12).setFontAlign(0, 0);
+  g.drawString(lastHourLabel, lastHourX, BASELINE_XTICKS);
+  g.setColor("#808080");
+  g.drawLine(lastHourX, BASELINE_XTICKS, lastHourX, y);
+  if (previousHourX > graphX) {
+  g.setColor("#000000");
+    g.drawString(previousHourLabel, previousHourX, BASELINE_XTICKS);
+    g.setColor("#808080");
+    g.drawLine(previousHourX, BASELINE_XTICKS, previousHourX, y);
+  }
+  
 
   // 1. Basals in the bottom
   if (historyData.basals.length > 0) {
@@ -311,13 +407,16 @@ function drawBottomRightGraph(x, y, w, h) {
     // Second loop to draw the basal bars
     for (let i = 0; i < historyData.basals.length; i++) {
       let currentPoint = historyData.basals[i];
-      // Corrected: Removed semicolon
       let nextPoint = (i + 1 < historyData.basals.length) ? historyData.basals[i+1] : { ts: now, rate: 0.0 };
 
-      // Corrected: Use ninetyMinutesMillis for time scaling
-      let startX = graphX + graphW * (currentPoint.ts - graphStartTime) / ninetyMinutesMillis;
-      if (startX < graphX) continue;
+      // Use ninetyMinutesMillis for time scaling
+      let startX = graphX + (currentPoint.ts - graphStartTime) * graphW / ninetyMinutesMillis;
+      if (currentPoint.ts < graphStartTime){
+        continue;
+      }
       let endX = graphX + graphW * (nextPoint.ts - graphStartTime) / ninetyMinutesMillis;
+
+      //console.log('plotting basal'+currentPoint.rate)
 
       let barHeight = (currentPoint.rate / maxBasal) * BASAL_SCALE;
       let barY = BASELINE_BASALS - barHeight;
@@ -345,17 +444,21 @@ function drawBottomRightGraph(x, y, w, h) {
     }
   }
   
-  // 2. treatments in the middle
+  // 2. insulin in the middle
   
-  historyData.treatments.forEach(t => {
-      let start = new Date(t.ts).getTime();
+  historyData.insulin.forEach(t => {
+      let start = Math.round(new Date(t.ts).getTime());
       if (t.insulin) {
           let bolusX = graphX + graphW * (start - graphStartTime) / ninetyMinutesMillis;
           let triangle_half_width = 3;
           if (bolusX > graphX && bolusX < graphX + graphW) {
 
               // 1. Define the 3 vertices of the triangle
-              const y_top = BASELINE_BOLUSES - 12; // Top top of the triangle
+              let baseline = BASELINE_BOLUSES;
+              if (+t.amount > 0.9) {
+                baseline -= 8;
+              }
+              const y_top = baseline + 8; // Top top of the triangle
               const y_bottom = y_top + 0.866 * triangle_half_width * 2; // Bottom of the triangle (Pythagoras)
 
               const vertices = [
@@ -370,27 +473,42 @@ function drawBottomRightGraph(x, y, w, h) {
       }
   });
   
+  
   // 3. glucose history on top of all.
   if (historyData.glucose.length >= 1) {
-    //let diameter = 3;
-    let radius = 3;
-    for (let i = 0; i < historyData.glucose.length - 1; i++) {
+    let firstAgo = Math.round((now- historyData.glucose[0].ts)/1000);
+  let lastAgo = Math.round((now- lastTimestamp(historyData.glucose))/1000);
+  //console.log("drawing bgs. "+firstAgo+" to "+lastAgo+"s ago");
+    //let radius = 1;
+    for (let i = 0; i < historyData.glucose.length; i++) {
         let p1 = historyData.glucose[i];
+        //console.log("p1:",p1)
         let p1_mmol = p1.sgv / MGDL_TO_MMOL;
-        let x = graphX + graphW * (new Date(p1.ts).getTime() - graphStartTime) / ninetyMinutesMillis;
-        let y = BASELINE_BG - (((p1_mmol - MIN_MMOL_SCALE) / (MAX_MMOL_SCALE - MIN_MMOL_SCALE)) * h);
-        if (x >= graphX && x <= graphX+graphW) {
-          if (p1_mmol < LOW_MMOL) {
+        let p2 = currentStatusData; // for the last point only
+        if (i < historyData.glucose.length-1){
+          p2 = historyData.glucose[i+1];
+        }
+        let p2_mmol = p2.sgv / MGDL_TO_MMOL;
+        let x1 = Math.round(graphX + graphW * (p1.ts - graphStartTime) / ninetyMinutesMillis);
+        let y1 = Math.round(BASELINE_BG - (((p1_mmol - MIN_MMOL_SCALE) / (MAX_MMOL_SCALE - MIN_MMOL_SCALE)) * h));
+        let x2 = Math.round(graphX + graphW * (p2.ts - graphStartTime) / ninetyMinutesMillis);
+        let y2 = Math.round(BASELINE_BG - (((p2_mmol - MIN_MMOL_SCALE) / (MAX_MMOL_SCALE - MIN_MMOL_SCALE)) * h));
+        if (x1 >= graphX && x2 <= graphX+graphW) {
+          if (p1_mmol < LOW_MMOL || p2_mmol< LOW_MMOL) {
             g.setColor("#FF0000");
           }
-          else if (p1_mmol  > HIGH_MMOL) {
+          else if (p1_mmol  > HIGH_MMOL || p2_mmol  > HIGH_MMOL) {
             g.setColor("#FF0000");
           }
           else {
              g.setColor("#00FF00");
           }
-          //g.fillCircle(x, y, diameter);
-          g.fillPoly([x-radius,y-radius/2, x-radius,y+radius/2, x-radius/2,y+radius, x+radius/2,y+radius,x+radius,y+radius/2,x+radius,y-radius/2,x+radius/2,y-radius,x-radius/2,y-radius]);
+          // we'll draw nine thin lines, to make it look like one thick line
+          for (let xo = -1; xo < 2; xo++){
+            for (let yo = -1; yo < 2; yo++){
+              g.drawLine(x1+xo, y1+yo, x2+xo, y2+yo);
+            }
+          }
         }
       
     }
@@ -405,7 +523,10 @@ function setupGestures() {
 
   Bangle.on('drag', e => {
     // This drag logic is correct and remains the same.
-    // It handles all the swipe gestures.
+    // It handles all the swipe gestures
+    if (dialogActive) return;
+    
+    console.log('drag detected')
     if (!drag) { 
       drag = { x: e.x, y: e.y, start_y: e.y };
     }
@@ -420,7 +541,7 @@ function setupGestures() {
       drag = undefined;
 
       const SWIPE_THRESHOLD = 40;
-      
+
       if (Math.abs(dx) > Math.abs(dy) + 10) { // Horizontal
         if (dx > SWIPE_THRESHOLD && settings.swipeRight) Bangle.load(settings.swipeRight + ".app.js");
         else if (dx < -SWIPE_THRESHOLD && settings.swipeLeft) Bangle.load(settings.swipeLeft + ".app.js");
@@ -435,10 +556,10 @@ function setupGestures() {
     }
   });
 
-  // --- THIS IS THE NEW DOUBLE-CLICK LOGIC ---
   Bangle.on('touch', () => {
     // If a drag is in progress, ignore the touch event.
     if (drag) return;
+    if (dialogActive) return;
 
     if (tapTimeout) {
       // If a timer is already running, this is the SECOND tap.
@@ -446,17 +567,16 @@ function setupGestures() {
       clearTimeout(tapTimeout); // Cancel the single-click timer
       tapTimeout = undefined;
       
-      console.log("Double-click detected, launching Settings.");
+      //console.log("Double-click detected, launching treatment menu.");
       // The settings for a Bangle.js app are typically named 'app.settings.js'
-      Bangle.load("aaps.settings.js"); 
-
+      showTreatmentCarbs();
     } else {
       // This is the FIRST tap.
       // Start a timer. If it finishes, it's a single-click.
       tapTimeout = setTimeout(() => {
         tapTimeout = undefined;
-        console.log("Single-click detected, launching AAPS Menu.");
-        Bangle.load("aaps-menu.app.js");
+        //console.log("Single-click detected, launching AAPS Menu.");
+        showMainMenu();
       }, 300); // 300ms is a good timeout for double-clicks
     }
   });
@@ -465,7 +585,7 @@ function setupGestures() {
 function loadSettings() {
   // Load settings from the file, providing safe defaults if the file doesn't exist
   settings = require('Storage').readJSON('aaps.settings.json', 1) || {
-    swipeUp: 'aaps-menu',
+    swipeUp: '',
     swipeDown: 'messages',
     swipeLeft: '',
     swipeRight: '',
@@ -509,162 +629,317 @@ function sendStepCount() {
   }
 }
 
-function processQueue() {
-  // 1. Read the ENTIRE queue file into memory.
-  const queueFile = require("Storage").open(QUEUE_FILE, 'r');
-  const queueContent = queueFile.read(100000); // cutting off at 100kB. Not sure it will fit in mem.
-
-  // If the file exists and has content...
-  if (queueContent) {
-    // 2. IMMEDIATELY delete the file. This "acknowledges" the batch.
-    // AAPS can now start creating a new file.
-    queueFile.erase();
-
-    // 3. Process the content we read from memory.
-    const events = queueContent.trim().split('\n');
-    let needsRedraw = false;
-
-    events.forEach(line => {
-      if (!line) return; // Skip empty lines
-      try {
-        const event = JSON.parse(line);
-        // handleSingleEvent returns true if a redraw is needed.
-        if (handleSingleEvent(event)) {
-          needsRedraw = true;
-        }
-      } catch (e) {
-        console.log("JSON parsing error in queue:", e);
+function processFiles() {
+   var needsRedraw = (new Date().getMinutes()) != lastDrawMinutes;
+   //console.log("processFiles. BG len:"+historyData.glucose.length);
+   for (let i = 0; i < MAX_NUMBER_OF_EVENT_FILES; i++) {
+      let currentFileName = EVENT_FILE_PREFIX+String(i).padStart(2, '0');
+      let content = require("Storage").read(currentFileName);
+      //console.log("processing "+currentFileName);
+      if (content !== undefined) {
+        console.log("event found in "+currentFileName);
+        const events = content.trim().split('\n');
+        events.forEach(line => {
+          if (!line) continue; // Skip empty lines
+          console.log("processing line "+line);
+          if (handleSingleEvent(line)) {
+            needsRedraw = true;
+          }
+        });
+        console.log("processed "+currentFileName);
+        require("Storage").erase(currentFileName);
+        //console.log("erased "+currentFileName);
       }
-    });
-
-    // 4. After processing the whole batch, redraw if necessary.
-    if (needsRedraw && Bangle.isLCDOn()) {
-      draw();
-    }
-  }
+   }
+   needsRedraw = needsRedraw || updateCurrentData();
+   needsRedraw = needsRedraw || checkForNewHistory();
+   if (needsRedraw) {
+     draw();
+   }
 }
 
 // This function handles a single event and returns 'true' if a redraw is needed.
 // It uses the "HashMap" pattern to de-duplicate history.
-function handleSingleEvent(event) {
-  // For history, we'll build it up in temporary maps.
-  let tempGlucoseMap = {};
-  let tempTreatmentMap = {};
+function handleSingleEvent(ev) {
+  obj = JSON.parse(ev);
+  // receiving: EventNewBG, EventIOB, EventCOB, EventBasal, GlucoseHistory, TreatmentHistory, BasalsHistory, ConfirmAction
+  // other direction: ActionBolusConfirmed, 
 
-  switch (event.eventType) {
-    case "EventNewBG":
-      // Always update current data
-      currentStatusData.sgv = event.sgv;i
-      currentStatusData.trend = event.trend;
-      currentStatusData.delta = event.delta;
-      currentStatusData.iob = event.iob;
-      currentStatusData.cob = event.cob;
-      currentStatusData.basal = event.basal;
-      currentStatusData.ts = event.ts;
-      return true; // Needs an immediate redraw
-    /*case "StatusUpdate":
-      currentStatusData.iob = event.iob; currentStatusData.cob = event.cob;
-      return true; // Needs an immediate redraw*/
-    /*case "GraphData":
-      // Add to a temporary map to build the full history
-      event.history.forEach(p => tempGlucoseMap[p.ts] = p);
-      // We don't redraw yet, we wait for all chunks to be processed.*/
-    case "ConfirmAction":
-      //should be handled by AAPS Menu.
-      console.log("ConfirmAction received by AAPS. SHOULD BE RECEIVED BY aaps menu!")
-      return false;
-    case "GlucoseHistoy":
-      updateHistory(event.glucose, null, null);
-      return true;
-    case TreatmentsHistoy":
-      updateHistory(null, event.treatments, null);
-      return true;
-    case "BasalsHistoy":
-      updateHistory(null, null, event.basals);
-      return true;
+  switch (obj.eventType) {
     case "ConfirmAction":
       // When a confirmation event arrives, handle it directly.
-      handleConfirmAction(event);
+      console.log("ConfirmAction received by AAPS on watch.");
+      handleConfirmActionJson(obj);
       return false;
       break;
+    default:
+      console.log("Received event which did not match any expected eventtypes:"+ev);
+      return false
     // ... add other cases
   }
 
   return false;
 }
 
-
-function handleConfirmAction(confirmFile) {
-  Bangle.buzz();
-
-  E.showPrompt(confirmFile.message, {
-    title: confirmFile.title,
-    buttons: {"Confirm": true, "Cancel": false}
-  }).then(confirmed => {
-    if (confirmed) {
-      console.log("User confirmed. Sending action.");
-      // Assumes you have a global sendCommand function
-      sendCommand(confirmFile.returnCommandType, confirmFile.returnCommandJson);
-      E.showMessage("Confirmed.\nSending...");
-      setTimeout(() => { if (Bangle.isLCDOn()) draw(); }, 1500);
-    } else {
-      console.log("User cancelled action.");
-      E.showMessage("Cancelled.");
-      setTimeout(() => { if (Bangle.isLCDOn()) draw(); }, 1500);
-    }
-  });
-}
-
-
-function checkAppCommands() {
-  const cmdFile = require("Storage").readJSON(COMMAND_FILE, 1);
-  if (cmdFile) {
-    require("Storage").erase(COMMAND_FILE);
-    console.log(`Found command: ${cmdFile.command}`);
-
-    // The data is already prepared by the menu app.
-    // We just need to send it to the phone.
-    sendCommand(cmdFile.command, cmdFile.data);
-
-    // After sending, show a "waiting" message.
-    // The confirmation will be handled by the queue processor.
-    E.showMessage("Sending...\nWaiting for\nconfirmation.");
-
-    // Set a timeout to clear the message and go back to the clock
-    // in case the confirmation never arrives.
-    setTimeout(() => {
-        if (Bangle.isLCDOn()) draw();
-    }, 10000);
+function lastTimestamp(list) {
+  if (list.length > 0) {
+    return list[list.length-1].ts
+  }
+  else
+  {
+    return -1;
   }
 }
 
-// === INITIAL SETUP ===
+function updateCurrentData() {
+  let now = Math.round(new Date().getTime());
+  let tenMinutesAgoMillis = now - 10 * 60 * 1000;
+  let ninetyMinutesAgoMillis = now - 90 * 60 * 1000;
+  var basalChanged = false;
+  var needsRedraw = false;
+  let newStatusData = require("Storage").readJSON(STATUS_FILE, false);
+  for (let key in newStatusData) {
+    let val = newStatusData[key];
+    if (key == "basal") {
+      basalChanged = currentStatusData[key] != val;
+      if (basalChanged) {
+      console.log("basal changed: "+basalChanged+": "+currentStatusData[key]+"("+typeof(currentStatusData[key])+") => "+val+"("+typeof(val)+")");
+      }
+    }
+    needsRedraw = currentStatusData[key] != val;
+    currentStatusData[key] = +val;
+  }
+  
+  // save every five minutes (more than 4.5) in historyData.glucose:
+  let timeDiff = currentStatusData.ts - (lastTimestamp(historyData.glucose));
+  //console.log("bg timediff: "+(timeDiff/1000)+"s");
+  let allowAfter = Math.round(4.5 * 60 * 1000);
+  //console.log("allowed: "+allowAfter);
+  if (timeDiff>allowAfter){
+    //console.log("inserting bg");
+    let lastAgo = now- currentStatusData.ts;
+    //console.log("inserting bg. from "+(lastAgo/1000)+"s ago");
+    insertSorted(historyData.glucose, {ts: currentStatusData.ts, sgv: currentStatusData.sgv}, ninetyMinutesAgoMillis, false, "sgv");
+  }
+  if (basalChanged) {
+    //console.log("inserting changed basal");
+    /*while (historyData.basals.length > 1 && historyData.basals[historyData.basals.length-1].ts > allowAfter) {
+      historyData.basals.pop();
+    }*/
+    insertSorted(historyData.basals, {ts: currentStatusData.ts, rate: currentStatusData.basal}, ninetyMinutesAgoMillis, true, "rate");
+  }
+  return needsRedraw;
+}
+
+function checkForNewHistory() {
+  var needsRedraw = false;
+  let ninetyMinutesAgoMillis = Math.round(new Date().getTime() - 90 * 60 * 1000);
+  let files = [HISTORY_BG_FILE, HISTORY_INSULIN_FILE, HISTORY_BASALS_FILE];
+  let currentBgHistoryLen = historyData.glucose.length;
+  let currentBgHistoryStart = (historyData.glucose.length > 0)?historyData.glucose[0].ts:-1;
+  let currentBgHistoryEnd =  (historyData.glucose.length > 0)?lastTimestamp(historyData.glucose):-1;
+  files.forEach(f => {
+    //console.log("checking "+f);
+    let content = require("Storage").read(f);
+    let updatedNow = 0;
+    if (content != undefined) {
+      data = JSON.parse(content).data;
+      //let lines = content.split('\n');
+      let lastUpdated = (f == HISTORY_BG_FILE)?historyData.glucoseUpdated:(f == HISTORY_INSULIN_FILE)?historyData.insulinUpdated:historyData.basalsUpdated;
+      if (historyData.stale) {
+        historyData = { glucose: [], insulin: [], carbs: [], basals: [], glucoseUpdated: -1, insulinUpdated: -1, carbsUpdated: -1, basalsUpdated: -1, stale: false };
+      }
+      //console.log("lastUpdated:"+lastUpdated)
+      //lines.forEach(line => {
+      data.forEach(obj => {
+        //let pairs = line.split(',');
+        //let obj = {};
+        //pairs.forEach(p => {
+        //  const pair = p.split(':');
+        //  const key = pair[0]; const val = +pair[1]; //conversion to number
+        //if (key) {
+        //  obj[key] = val;
+        //}
+        //});
+        if (obj.ts > lastUpdated){
+          //console.log("found new data! "+obj.ts+" "+lastUpdated);
+          if (f == HISTORY_BG_FILE) {
+            // glucose history
+            if (currentBgHistoryLen == 0 || obj.ts < currentBgHistoryStart || obj.ts > currentBgHistoryEnd) {
+            insertSorted(historyData.glucose, obj, ninetyMinutesAgoMillis, false, "sgv");
+            }
+          }
+          else if (f == HISTORY_INSULIN_FILE) {
+              insertSorted(historyData.insulin, obj, ninetyMinutesAgoMillis, false, "amount");
+          }
+          else if (f == HISTORY_BASALS_FILE) {
+            insertSorted(historyData.basals, obj, ninetyMinutesAgoMillis, true, "rate");
+          }
+        }
+        if ( obj.ts > updatedNow ) updatedNow = obj.ts;
+        needsRedraw = true;
+      });
+      let content = require("Storage").erase(f);
+    }
+    if (f == HISTORY_BG_FILE) historyData.glucoseUpdated = updatedNow;
+    else if (f == HISTORY_INSULIN_FILE) historyData.insulinUpdated = updatedNow;
+    else if (f == HISTORY_BASALS_FILE) historyData.basalsUpdated = updatedNow;
+
+  });
+    //TODO: is this next line right?
+    historyData.stale = needsRedraw;
+    return needsRedraw;
+  }
+
+  function handleConfirmActionJson(confirmEvent) {
+
+    confirmEvent.returnCommandJson = confirmEvent.returnCommandJson; 
+
+    Bangle.buzz();
+
+    dialogActive = true; //hinders the watch face from updating the screen.
+    console.log("confirmEvent.message: "+confirmEvent.message);
+    message = confirmEvent.message.replaceAll("<br/>", "\n");
+    lib.confirmDialog(confirmEvent.eventType, message, () => {
+      //console.log("User cancelled action.");
+      dialogActive=false; //lets the watch face update the screen.
+      E.showMessage("Cancelled.");
+      setTimeout(() => { hideMenuAndDraw(); }, 300); // if longer, the main menu pops up for some reason
+    }, () => {
+      //console.log("User confirmed. Sending action.");
+      dialogActive=false; //lets the watch face update the screen.
+      lib.sendCommand(confirmEvent.returnCommandType, confirmEvent.returnCommandJson);
+      E.showMessage("Confirmed.\nSending...");
+      setTimeout(() => { hideMenuAndDraw();}, 300);
+    });
+}
+
+
+// Helper function to send a command and wait for response
+function sendCommandAndWait(command, data) {
+  lib.sendCommand(command, data);
+  E.showMessage("Sending...");
+  setTimeout(() => { processFiles(); draw(); dialogActive = false;}, 1000);
+}
+
+// --- UI Flow for Bolus / Carbs ---
+let treatmentParams = { carbs: 0, insulin: 0 };
+function showTreatmentCarbs() {
+  dialogActive = true;
+  lib.showNumberEntry("Carbs (g)", treatmentParams.carbs, 5, "g", (carbs) => {
+    if (carbs === null) { showMainMenu(); return; } // Go back to main menu
+    treatmentParams.carbs = carbs;
+    showTreatmentInsulin();
+  });
+  //hideMenu();
+}
+function showTreatmentInsulin() {
+dialogActive = true;
+  lib.showNumberEntry("Insulin (U)", treatmentParams.insulin, 0.5, "U", (insulin) => {
+    if (insulin === null) { showTreatmentCarbs(); return; } // Go back to carbs
+    treatmentParams.insulin = insulin;
+    // We have all the data. Send the final command.
+    sendCommandAndWait("ActionBolusPreCheck", treatmentParams);
+    treatmentParams = { carbs: 0, insulin: 0 };
+    hideMenu();
+  });
+}
+function hideMenuAndDraw() {
+  E.showMenu();
+  dialogActive = false;
+  draw();
+}
+function hideMenu() {
+  console.log("hiding menu");
+  E.showMenu();
+  dialogActive = false;
+}
+
+// --- UI Flow for Temp Targets ---
+function showTempTargetMenu() {
+  dialogActive = true;
+  const menu = {
+    "" : { "title" : "Temp Target" },
+    "< Back" : showMainMenu,
+    "Eating Soon": () => {hideMenu(); sendCommandAndWait("ActionTempTargetPreCheck", { command: "PRESET_EATING" })},
+    "Activity": () => {hideMenu(); sendCommandAndWait("ActionTempTargetPreCheck", { command: "PRESET_ACTIVITY" })},
+    "Hypo": () => {hideMenu(); sendCommandAndWait("ActionTempTargetPreCheck", { command: "PRESET_HYPO" })},
+    "Cancel": () => {hideMenu(); sendCommandAndWait("ActionTempTargetPreCheck", { command: "CANCEL" })},
+  };
+  E.showMenu(menu);
+}
+
+// --- UI Flow for Profile Switch ---
+let profileSwitchParams = { percentage: 100, duration: 0, timeShift: 0 };
+function showProfileSwitchPercent() {
+  dialogActive = true;
+  
+  lib.showNumberEntry("Percent (%)", profileSwitchParams.percentage, 10, "%", (percent) => {
+    if (percent === null) { showMainMenu(); return; }
+    profileSwitchParams.percentage = percent;
+    E.showMenu();
+    showProfileSwitchDuration();
+  });
+}
+function showProfileSwitchDuration() {
+  dialogActive = true;
+  
+  lib.showNumberEntry("Duration (min)", profileSwitchParams.duration, 30, "min", (duration) => {
+    if (duration === null) { showProfileSwitchPercent(); }
+    profileSwitchParams.duration = duration;
+    // We have all the data. Send the final command.
+    hideMenu();
+    sendCommandAndWait("ActionProfileSwitchPreCheck", profileSwitchParams);
+  });
+}
+
+function refreshData() {
+  historyData.stale = true;
+  lib.sendCommand("RequestInitialData");
+  
+  hideMenuAndDraw();
+}
+
+// --- The Main Menu ---
+function showMainMenu() {
+  dialogActive = true;
+  const mainMenu = {
+    "" : { "title" : "AAPS Menu" },
+    "< Back" : hideMenuAndDraw,
+    'Treatment': showTreatmentCarbs,
+    'Temp Target': showTempTargetMenu,
+    'Profile Switch': showProfileSwitchPercent,
+    'Refresh Data': refreshData,
+  };
+  E.showMenu(mainMenu);
+}
+function housekeeping() {
+  require("Storage").write("aaps.debug", JSON.stringify(historyData.basals));
+}
+
 function start() {
   Bangle.setUI("clock");
   Bangle.loadWidgets();
 
   // Load settings from the file first
   loadSettings();
+  
+  draw();
 
   lib.sendCommand("RequestInitialData", {});
-  processQueue(); // Initial read
+  processFiles(); // Initial read
   
-  setInterval(processQueue, 5000); // Poll files every 5s
+  setInterval(housekeeping, 5*60000); // Poll files every 5s
+  setInterval(processFiles, 5000); // Poll files every 5s
   Bangle.on('lcdPower', (on) => { if (on) draw(); });
   // Call the function to enable all our gestures
   setupGestures();
-
-  draw();
 
   // --- ADD TIMERS FOR SENSOR UPLOADS ---
   // Send heart rate every 3 minutes
   setInterval(sendHeartRate, 3 * 60 * 1000);
   // Send step count every 10 minutes
   setInterval(sendStepCount, 10 * 60 * 1000);
-
-
-  // --- COMMAND CHECKER INTERVAL ---
-  commandCheckInterval = setInterval(checkAppCommands, 2000); // Check for commands every 2s
 
   // Send initial values on startup
   setTimeout(() => {

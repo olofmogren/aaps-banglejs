@@ -3,7 +3,7 @@
   "name": "AAPS",
   "version": "0.01",
   "description": "A watch face that connects to a modified AndroidAPS app for real-time data and actions.",
-  "icon": "app.png",
+  "icon": "aaps-icon.png",
   "type": "clock",
   "tags": "clock,health,bluetooth,aaps",
   "supports": ["BANGLEJS2"],

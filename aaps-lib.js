@@ -6,11 +6,11 @@ exports.showNumberEntry = function(title, initialValue, step, unit, callback) {
 
   function draw() {
     g.reset().clear();
-    g.setFont("Vector", 20).setFontAlign(0, -1).drawString(title, W / 2, 10);
-    g.setFont("Vector", 40).setFontAlign(0, 0).drawString(value.toFixed(1) + " " + unit, W / 2, H / 2);
+    g.setFont("Vector", 16).setFontAlign(0, -1).drawString(title, W / 2, 10);
+    g.setFont("Vector", 32).setFontAlign(0, 0).drawString(value.toFixed(1) + " " + unit, W / 2, 44);
     
     // Buttons
-    g.setFont("Vector", 30);
+    g.setFont("Vector", 24);
     g.drawRect(10, H / 2 - 25, 60, H / 2 + 25);
     g.drawString("-", 35, H / 2); // Decrease
     
@@ -41,6 +41,50 @@ exports.showNumberEntry = function(title, initialValue, step, unit, callback) {
           callback(null);
         } else if (xy.x > W - 90) { // OK
           callback(value);
+        }
+      }
+    }
+  });
+
+  draw();
+};
+exports.confirmDialog = function(title, message, callbackCancel, callbackConfirmed) {
+  const W = g.getWidth();
+  const H = g.getHeight();
+
+  const allLines = message.split("\n");
+  const lines = allLines.filter((line) => line.length > 0);
+
+  function draw() {
+    g.reset().clear();
+    g.setFont("Vector", 16).setFontAlign(0, -1).drawString(title, W / 2, 10);
+    g.setFont("Vector", 14).setFontAlign(0, 0);
+    var offset = 0;
+    lines.forEach(l => {
+      console.log("line: "+l);
+      g.drawString(l, W / 2, 44+offset);
+      offset += 14;
+    });
+    //g.setFont("Vector", 14).setFontAlign(0, 0).drawString(message, W / 2, 44);
+    
+    g.setFont("Vector", 20);
+    g.drawRect(10, H - 40, 80, H - 10);
+    g.drawString("Cancel", 45, H - 25); // Cancel
+    
+    g.drawRect(W - 80, H - 40, W - 10, H - 10);
+    g.drawString("Confirm", W - 45, H - 25); // OK
+  }
+
+  Bangle.setUI({
+    mode: "custom",
+    back: callbackCancel,
+    redraw: draw,
+    touch: (btn, xy) => {
+      if (xy.y > H - 50) {
+        if (xy.x < 90) { // Cancel
+          callbackCancel();
+        } else if (xy.x > W - 90) { // OK
+          callbackConfirmed();
         }
       }
     }

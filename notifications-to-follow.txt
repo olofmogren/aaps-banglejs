@@ -1,0 +1,9 @@
+notify {
+  "t": "notify",
+  "id": 1757003434,
+  "src": "AAPS",
+  "title": "INFO",
+  "subject": "",
+  "body": "Profile set OK",
+  "sender": ""
+ }

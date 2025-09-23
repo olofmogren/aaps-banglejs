@@ -1,3 +1,6 @@
+// Open source software. See LICENSE.txt.
+// Author: Olof Mogren
+
 const lib = require('aaps-lib.js');
 
 // === GLOBAL DATA and CONSTANTS

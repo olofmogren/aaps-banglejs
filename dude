@@ -1,0 +1,1166 @@
+Transcript
+September 23, 2025, 8:05AM
+
+Rolando Esquivel   0:03
+OK, database and we also created the game.
+I don't. Yeah. Yeah. We had the something. Where?
+
+Olof Mogren   0:15
+There's some issue with the sound.
+
+Rolando Esquivel   0:22
+Thank you.
+
+Olof Mogren   0:24
+I I think it's better now.
+
+Rolando Esquivel   0:26
+Is it sounded? No, the sound should be there.
+Is it something better now?
+
+Olof Mogren   0:35
+Yeah, I think the sound is working.
+
+Rolando Esquivel   0:39
+OK, so likely get back to the scenario database. So basically scenario database we decided to go within 4G database and we already create infrastructure. So database ready to to be used. We still haven't populated it.
+But we did. We ate data model. What we so like initial design how how dates inside of database should look like so.
+We were trying to follow the ASM focus scenarios standard actually. Really this design, if they have all to be fully compatible, so the next steps here are.
+But I see there are still some open issues we need to address with extension of the main model in Asian open scenario, but we're currently working on it, so we're not far away from.
+We end here so and regarding the for our database, we're planning to start the different mutual scenarios inside of the page run game based scenario database this week. So the goal is to.
+Try to create some kind of work from the type. Right now it's an initial scenarios and don't answer to after we actually see how it's going to work, we actually plan to discuss it up.
+
+Olof Mogren   2:22
+So so is everything going as planned with this?
+
+Rolando Esquivel   2:26
+Yes, yes.
+
+Olof Mogren   2:29
+That sounds good.
+
+Rolando Esquivel   2:29
+Everything. Everything. Yeah. Everything's laying as planned.
+
+Olof Mogren   2:32
+And and and you said you're you're sort of close to the goal and and no major hurdles is is stopping you?
+
+Rolando Esquivel   2:40
+Don't.
+
+Olof Mogren   2:45
+Great. The second point on the on the follow up of action action items would be the field data collection from from my robot. What's what's happening there?
+
+Rolando Esquivel   3:02
+Yeah. We have been collecting some some good data on this side we have.
+Yeah, many human interaction as part of this other project that we are running. Sava, we have. Yeah, radar, camera data with human in the. Yeah, the field of view.
+We are working on rotation and yeah we can process to to get the data fully useful. We also deployed calibration between these two modalities so.
+Actually the only pending item there is to verify synchronisation. Full synchronisation between the modalities. But but yeah, we have been collecting really interesting and useful data.
+For the use case.
+
+Olof Mogren   4:01
+Right. And and what kind of scenarios or how is how is the collection structured?
+
+Rolando Esquivel   4:11
+Yeah, well, we have this machine on woodland. This tractor that we have installed, the different components, different sensors we have.
+Full calibration of that we run a calibration process to get the the extrinsics and intrinsics of the different sensors and this is basically triggering when a detection is when when we have a detection an alarm.
+So it's continuously checking for any detection and the triggering process is basically a recording of those cases. We are storing that data and Rosebuds name caps actually.
+And that is uploaded to Tor system. We have been doing like a specific test for that along with the.
+With DTI and and the other people in the summer project for that, yeah, we tried to collect this scenario so people walking in front of the vehicle.
+Also, walking towards the vehicle is some also like trying to hide people in the buses and and the field border. So making scenarios a bit more challenging for the camera and radar.
+Detection. Yeah, it has been mainly that type of scenarios. People also laying in the in the floor, yeah, different like kind of position of the people.
+The interest scenario.
+But yeah, now we are in that process of doing ground, ground truth and getting these different annotations in place.
+
+Olof Mogren   6:18
+And how how are you working with the ground truth? What kind of granularity are you? Are you working with there?
+
+Rolando Esquivel   6:26
+I think you can start. Yes, so far we are using the ground rules to evaluate models on our data.
+Operating confusion matrices I use for the segmentation at fun scores and later on we are also planning to of course train our model. We are experimenting with those processes and building up the data set.
+For that so evaluation and training.
+And later on also integrating continuous tests using these ground truths to evaluate the whole pipeline and not just the computer vision model and.
+Continuously monitoring if if the system works well based on the ground.
+
+Olof Mogren   7:34
+And and the ground truth. Those are manually annotated. After collecting the the the sensor data.
+
+Rolando Esquivel   7:43
+We built for the commerce. We built a human in the loop process, so it has some automation in it with bigger detection and video segmentation models. But there is a loop so as good of a second.
+Segmentation as we could achieve with these video segmentation models is generated and we have a process that the human cheques through corrects any frames that he or she thinks.
+Needs to is not correct. He can he or she can surpass segmentation, must add new ones and then the whole process runs again with the human input. And this can be done multiple times.
+Yeah.
+
+Olof Mogren   8:35
+Hmm.
+
+Rolando Esquivel   8:36
+As you can see, this is for now. It's pure camera ground truth. So we are still like we need to work on the on the point line.
+
+Olof Mogren   8:46
+Are you sharing your screen?
+
+Rolando Esquivel   8:48
+No, no, no, no. Hey, sorry. Yeah. This is. Yeah. This is. Yeah. We need to work on the ground. Truth from the point cloud side. It should be like, yeah.
+
+Olof Mogren   8:50
+OK.
+Yeah.
+
+Jacopo Gaetani   9:06
+But Speaking of ground truth, we have some for some recording. We have Agps, ground, truth of where the obstacle was placed, so that can be used is not really ground truth of point cloud but it's let's say the ground truth of where the bounding box of the detection was is supposed to be located based on the GPS coordinate they were taken.
+Beforehand, before running the test. That's for static obstacle mainly works, but only for some specific recording, not for all of them.
+
+Olof Mogren   9:30
+Mm-hmm.
+Interesting. So we have the raised hand from you one.
+
+Rolando Esquivel   9:43
+Government.
+
+Olof Mogren   9:47
+You're muted. You want.
+
+Rolando Esquivel   9:48
+And I'll hear you.
+Not yet.
+
+Olof Mogren   9:54
+Still, don't even.
+
+Rolando Esquivel   10:11
+Yeah.
+
+Olof Mogren   10:13
+Yes.
+Let's let's continue then. So, did you have any more things to add on the on the collection of of real world data?
+
+Rolando Esquivel   10:34
+No, I think I think that's that's the current status on our site.
+
+Olof Mogren   10:41
+Yeah, yeah, sounds like good progress actually.
+
+Rolando Esquivel   10:44
+Yeah, yeah.
+
+Olof Mogren   10:46
+So so it's it's going to be interesting to see what's what, what can be done with the data and see some some results.
+
+Rolando Esquivel   10:54
+Yeah, actually I think it's an action item later, but we have also some baseline on using camera segmentation in the point lot projection.
+So yeah, we can show those results.
+
+Olof Mogren   11:09
+OK.
+Yeah, sounds good. So so sure. Let's let's do that. When we come to the the the tasks.
+
+Rolando Esquivel   11:15
+The.
+The.
+It.
+
+Olof Mogren   11:26
+So we had five different action items. The third one was from, say, freight radar completing Lanic 2 third training run evaluation. I think this was from high clocks last time.
+Do you have some some comments on this?
+
+Rolando Esquivel   11:50
+Yeah.
+
+Olof Mogren   11:51
+It's the.
+
+Haik Avetian   11:54
+Yeah.
+
+Olof Mogren   11:55
+But there's a lot of noise from your from your microphone.
+There, there are many technical issues today.
+
+Rolando Esquivel   12:06
+Yeah.
+
+Olof Mogren   12:11
+Uh.
+Yeah, yeah, he will re-enter and and let's see what happens with that.
+
+Rolando Esquivel   12:16
+Hmm.
+
+Olof Mogren   12:23
+So. So the rest of the three action items are are safe radar points. It's it's Atlantic, two third training running evaluation. It's the resuming radar scenes, model training and it's implementing temporal augmentation training.
+
+Johan Degerman (Consultant)   12:44
+So now you can hear me.
+
+Olof Mogren   12:44
+Yeah.
+Yes, we can.
+
+Johan Degerman (Consultant)   12:46
+Back to the phone.
+
+Rolando Esquivel   12:46
+Yes.
+
+Johan Degerman (Consultant)   12:49
+OK, hopefully I will get this mic working.
+
+Haik Avetian   12:56
+Video.
+
+Johan Degerman (Consultant)   12:56
+Yeah.
+
+Olof Mogren   12:58
+It's we. We can hear you, but it's a lot of noise.
+
+Haik Avetian   12:58
+Sweet. We can't hear you, but it's nice.
+
+Olof Mogren   13:03
+Do you have some some volume control for your mic? Perhaps if you turn it down?
+Could be better.
+Because when you speak also it's it's distorted.
+
+Rolando Esquivel   13:17
+And there is like echo, so I'm not sure if we all change to mute.
+
+Olof Mogren   13:18
+We can hear it.
+Yeah, sure. We can try that.
+
+Rolando Esquivel   13:24
+So.
+
+Johan Degerman (Consultant)   13:31
+Like, do you have some other person in the office who could join the meeting on his computer?
+
+Jacopo Gaetani   13:39
+Or. Or maybe you have a headphones to use different mic than not the building.
+
+Johan Degerman (Consultant)   13:43
+Yeah, useful. I speak phone.
+
+Olof Mogren   13:50
+Yeah, the the telephone is is usually an OK option. You get a very small stream, but it, but it's it's usually working.
+
+Johan Degerman (Consultant)   13:54
+Yeah, I.
+I'm in Stockholm right now so I cannot assist at the office anyway. Maybe I should I I had a question about we can continue about the ground truth. We use the radar scenes data for example and and did analysis on that and they had the ground.
+
+Olof Mogren   14:10
+Hmm.
+
+Rolando Esquivel   14:11
+Yes.
+
+Johan Degerman (Consultant)   14:18
+Truth, they labelled the detections from the radar.
+And that is one way to get the ground truth, and that is not the actual position of an extended target car or whatever. But one thing with the ground truth, we had also ground truth looking at sort of naval data. We just tested it and there were occasions where we the radar could.
+
+Rolando Esquivel   14:31
+OK.
+
+Johan Degerman (Consultant)   14:45
+Don't see the target.
+Quite often, actually. So then the question then we cannot estimate anything. So ground truth should be both the actual position of the target using at best GPS, but also including.
+
+Rolando Esquivel   14:50
+Yeah.
+Yeah.
+
+Johan Degerman (Consultant)   15:05
+Is it visible for the sensor? So that was just a comment on the ground truth. The ground truth processing is it has a bit of technical stuff on it onto it, so both it should be visible and the other thing it's it's a target.
+
+Rolando Esquivel   15:10
+Yeah.
+
+Johan Degerman (Consultant)   15:25
+It's really extended. Say it's a truck or even a big agricultural machine. What position is the actual real position of of the target in ground truth, since it is extended?
+
+Rolando Esquivel   15:28
+Thank you.
+Even.
+
+Johan Degerman (Consultant)   15:43
+I think that is the two most the two crucial parts of ground truth. It should be disabled by the sensor, otherwise you cannot label it as ground truth since it's not seen at all.
+
+Rolando Esquivel   15:56
+Yeah.
+
+Johan Degerman (Consultant)   15:57
+It's in field of view and it's actually detectable, and then it's the actual position. Is it the closest point to the sensor or is it some centre point? Or is the centre point with extension and so there are some decisions you need to make with ground truth?
+That would be interesting to hear from you, love about how others are are solving the ground truth issue. Is it usually the closest point that you detect when it's detectable?
+Or or or how is you? Or is this a centre point when it's the the car with extension?
+Uh.
+
+Rolando Esquivel   16:33
+Yeah.
+
+Olof Mogren   16:35
+I I suppose that that depends on on what task we're solving. If we're doing object detection then then we want the bounding box, right?
+
+Rolando Esquivel   16:35
+Yeah.
+
+Johan Degerman (Consultant)   16:44
+Yeah. So for extended targets, it's usually it's the ground. Truth is also the extended target, the bounding box with centre point and headings and so on.
+
+Olof Mogren   16:55
+Yeah.
+
+Haik Avetian   16:58
+Is my microphone working now better? Yeah.
+
+Johan Degerman (Consultant)   17:00
+Yeah, great. I can't. While you were fixing things, I continue. That is just erased some of our technical issues, but now you're on the schedule.
+
+Olof Mogren   17:00
+Right.
+
+Haik Avetian   17:04
+Yeah, yeah.
+Yeah.
+
+Rolando Esquivel   17:16
+Yeah, just to add so well, yeah, sorry, just just to add on that. On the ground truth, we also have LIDAR data, we can add some additional important information of special position of the object, so.
+
+Haik Avetian   17:16
+Well, yeah.
+
+Rolando Esquivel   17:32
+That that can be later added, but we need to work on that pipeline of ground truth for the point clock. So we'll be good to upload this input. So what should be the the best way to annotate the the the point clock?
+
+Johan Degerman (Consultant)   17:45
+Yeah.
+
+Haik Avetian   17:46
+Yeah.
+
+Rolando Esquivel   17:48
+Yeah.
+
+Haik Avetian   17:48
+Well, a lot of data sets they've used, they've used semantic segmentation as a semi or as a first instance to to get ground truth on detections on radar for instance.
+
+Olof Mogren   17:49
+Yeah, I I can. Yeah.
+
+Haik Avetian   18:04
+And radar scenes uses a similar technique, but they they manually annotated everything in the second stage. I believe millions of radar detection points, manually annotated and for us the big struggle.
+So our our latest development has been to to try to apply our tracker on maritime radar detections and there we had GPS data for ground truth.
+And an extension of the boat. But there's.
+So.
+The that that was one way of having the ground truth. The the other one with radar scenes, they only manually they only had annotated the detection. So we had no, no given centre point as you once said. So they're big hurdle hurdle.
+With radar scenes was to figure out how to annotate for our object tracker. How to figure figure out how to get a proper ground truth for our object tracker. Since we're not tracking actual radar points.
+And we're not predicting radar, which radar points is an object or not.
+
+Olof Mogren   19:27
+So. So what? What is your model train to to predict what are the targets in the training?
+
+Haik Avetian   19:28
+Well.
+
+Rolando Esquivel   19:32
+Yeah.
+
+Haik Avetian   19:33
+Well, the targets are to basically an object with an extension centre point and a velocity vector. That's the current status. So each prediction prediction step tries to predict where an object is if and.
+You have in the input. You have a bunch of radar detections and you try to from these radar detection you're trying to create an object. So it's kind of mismatch between radar scenes data set and Carla. So there we had to create our own kind of estimation.
+Of objects for for target, for as objects, but then.
+
+Johan Degerman (Consultant)   20:18
+The correlates baseline basically.
+
+Haik Avetian   20:22
+Yeah, in Carly, you have everything obviously. So it's quite straightforward. But that was a big hurdle. So one of the reasons why it took so long to train on radar scenes was I believe because of very bad ground truth estimation, for instance, since we only had radar data.
+
+Olof Mogren   20:27
+Hmm.
+
+Haik Avetian   20:41
+Like only had annotated radar detections points, but you know.
+
+Olof Mogren   20:48
+Yeah.
+
+Haik Avetian   20:51
+So that's been a big hurdle, right?
+
+Olof Mogren   20:51
+Well, well, I I I yeah, I guess you have to decide on on the way of of of mapping between the two then.
+
+Haik Avetian   21:01
+Yeah, one way would be I've let go of the radar scenes for for a moment and I'm going to try to focus a bit more on developing the network or improving it. So currently I've reverted back to Carla and.
+Doing some basic testing ablation studies or I've started to do do that.
+And that's gonna be the goal for the coming weeks and months. I think I can also note on the maritime data set that we had that the there's a lot of issues with the timing between the different between the GPS and the.
+Radar that we had so.
+That's an unresolved issue in the first data set that we acquired.
+Oh yeah.
+I don't know what else.
+Can add.
+
+Olof Mogren   22:08
+Hmm.
+
+Johan Degerman (Consultant)   22:11
+One thing we can add is that the the training we usually take a bunch of sequences and then based on the sequence like one second, two seconds or whatever of data we try to estimate the current position.
+
+Haik Avetian   22:27
+Yeah.
+And yeah, we want to increase that, right?
+
+Johan Degerman (Consultant)   22:30
+That that's.
+Yeah, that leads to a bit noisy because if you take a bunch of data and you estimate the current state, the network will quite logically focus on the last detection.
+
+Haik Avetian   22:36
+Yeah.
+Yeah.
+
+Olof Mogren   22:51
+Yes.
+
+Johan Degerman (Consultant)   22:52
+And that means you will have a noise output. So I think the the the current work is is to estimate rather the trajectory than the position current position.
+
+Olof Mogren   23:10
+OK. So you're feeding in a time series and you're making a prediction from for the last step in the time series.
+
+Haik Avetian   23:10
+Yeah.
+
+Johan Degerman (Consultant)   23:13
+Yeah.
+
+Haik Avetian   23:17
+Yeah.
+
+Johan Degerman (Consultant)   23:17
+And I think that is based on on MT3V2, the shalmers, the track former solution.
+
+Olof Mogren   23:26
+It it sounds like, yeah, it sounds like what you often do with time series modelling, so I'm not sure it should be a problem.
+
+Johan Degerman (Consultant)   23:26
+Right.
+I yeah.
+
+Haik Avetian   23:39
+Well, I can show you the the problem.
+
+Olof Mogren   23:43
+Yeah.
+
+Johan Degerman (Consultant)   23:44
+I think what what the network would do is is that unfortunately it would not weight the the the history really if depend how good the data set is. But the history will not mean so much.
+
+Olof Mogren   23:56
+Yeah, bro.
+
+Johan Degerman (Consultant)   24:02
+Uh.
+
+Haik Avetian   24:03
+Yeah, you can see the.
+
+Johan Degerman (Consultant)   24:04
+Unless you take into account.
+
+Olof Mogren   24:05
+None.
+
+Rolando Esquivel   24:06
+Shoot.
+
+Olof Mogren   24:09
+Yes, we see your screen. So So what? What model is it that you're using to model this?
+
+Haik Avetian   24:10
+Premiere.
+
+Rolando Esquivel   24:13
+Yeah.
+
+Haik Avetian   24:16
+It's modified debtor model. They're still. It's the same we've been using since the beginning, and the idea is to instead of just predict the last step, maybe add a trajectory.
+
+Olof Mogren   24:20
+Mm-hmm.
+Yeah.
+
+Haik Avetian   24:32
+So currently we have several encoder decoder layers, and the idea might be to add a prediction in each layer that is equivalent to a certain time step in the series.
+
+Rolando Esquivel   24:47
+Yeah.
+
+Haik Avetian   24:51
+And to have a certain iterative refinement of a prediction.
+
+Olof Mogren   24:58
+You you mean that that this will benefit from from having a more a more dense supervision during training then is that the idea?
+
+Haik Avetian   25:01
+Play.
+Yeah, that's the the idea. Yeah, I was, you could say.
+
+Olof Mogren   25:12
+Yeah.
+Sure you can try it. But but transformer based architecture should be able to to sort of know what time step they're they're making a prediction for, whether it's the last time or or some other time.
+
+Haik Avetian   25:26
+Yeah, yeah.
+
+Olof Mogren   25:30
+But it it gets noisy. You say. Did you describe how how in what way it's noisy?
+
+Haik Avetian   25:34
+OK.
+Well, just visually you can see the the prediction velocity vector jumps around quite a bit and the and the position as well. It's not as not as accurate as we would like.
+
+Olof Mogren   25:53
+Yeah, yeah. OK. So it's.
+
+Haik Avetian   25:53
+Like to be compared to traditional trackers, that is.
+
+Olof Mogren   25:58
+Yeah.
+
+Haik Avetian   26:00
+OK.
+
+Olof Mogren   26:01
+So. So I mean, you're doing the right thing in the way that you that you're looking into what what could be the causes and and try to limit it, eliminate them of course seeing if you have done serious supervision that that could make a difference.
+
+Haik Avetian   26:10
+Yeah.
+
+Olof Mogren   26:17
+Sure. Is it trained on on point estimates or or do what? What is the loss for the prediction?
+
+Haik Avetian   26:31
+The loss? Yeah, it is trained on point estimates. So you have a centre point that is trying to locate and a velocity vector. Well, you.
+
+Olof Mogren   26:37
+And.
+Have you made an animation for the ground truth as well? Is that is that smoother?
+
+Haik Avetian   26:44
+Yes.
+Yeah. Yeah, it is. Let's see.
+It's.
+Well, now it's not showing on the.
+Yeah, the ground truth was the line.
+
+Olof Mogren   27:11
+Yeah.
+If that's not yet handled in the debtor architecture, in some situations it helps to to explicitly model the uncertainty so you can make you can. You can train it to output the the, the mean and the standard deviation for example.
+
+Rolando Esquivel   27:18
+It.
+
+Haik Avetian   27:19
+OK.
+
+Olof Mogren   27:34
+And then you interpret it as as a probabilistic output, which in practise is just the mean that you're after. But but including this under deviation also means that you can have a loss function.
+That's that sort of punishes the model when it's when it's uncertain or when it makes predictions far, far away from the ground.
+
+Haik Avetian   28:01
+Yeah.
+
+Olof Mogren   28:04
+I can add some.
+
+Haik Avetian   28:04
+There is. There is actually a uncertainty estimator.
+
+Olof Mogren   28:10
+OK.
+
+Haik Avetian   28:11
+Built in.
+
+Olof Mogren   28:12
+Yeah, yeah. So I'm sure that's that's already handled then.
+
+Haik Avetian   28:17
+Yeah.
+Otherwise it uses same loss functions as the the debtor, so it applies a Hungarian matching first and then based on that it tries to figure out which.
+Logits are correct. Uh?
+Based on the best match and then it applies a loss on you have a logits estimator. So we're trying to guess which one of the object queries are correct and that gets added to.
+With the Hungarian matching match loss or state estimate loss.
+Umm.
+Yeah.
+
+Olof Mogren   29:10
+Yeah.
+
+Haik Avetian   29:13
+Well, yeah. So our hope, like you said is making the having a more dense training.
+
+Rolando Esquivel   29:18
+Yeah.
+
+Olof Mogren   29:26
+Have you tried training with different different kinds of data?
+
+Haik Avetian   29:27
+With help.
+
+Olof Mogren   29:32
+How does it react to different kinds of training data?
+
+Haik Avetian   29:37
+And.
+You mean different data sets?
+
+Olof Mogren   29:40
+Yeah, if you give it sort of simpler data, will it will it learn to be become more more smooth and predictable in that?
+
+Haik Avetian   29:48
+OK.
+Yeah. Well, training on Carla data is looks.
+A bit better. It's quite similar and Carla data is quite exact, but I've I've recently have.
+
+Johan Degerman (Consultant)   30:00
+Yeah.
+
+Haik Avetian   30:08
+Refine the ground truth extraction from Carl data to only include certain detections. So sometimes you have 10 detections on a car close by, while we have only have two detections in an entire segment on a car further away, so.
+Earlier I would take everything as the ground truth as long as it was inside of the field of view. But now I've narrowed it down to make sure that any ground truth has to have a a certain amount of detections, actual detections and the continuous.
+Umm.
+It has to have continuous detections for without a with a minimal gap in between them and time steps, so.
+
+Olof Mogren   30:53
+What? What's? What's a detection? What's a detection in this case?
+
+Haik Avetian   30:57
+And that a radar detection that is, yeah.
+
+Olof Mogren   30:59
+OK.
+
+Haik Avetian   31:04
+So we'll see. I'll do some training on that and see if that improves it.
+
+Olof Mogren   31:11
+Yeah.
+
+Johan Degerman (Consultant)   31:13
+Maybe you can can you show a little bit from car? Lots on old videos where where you because we we could see that especially when you have a target turning or or it it doesn't really follow the manoeuvre well and it's has.
+
+Haik Avetian   31:28
+Yeah.
+
+Johan Degerman (Consultant)   31:29
+Time to predict in the future as well, and that that I think we we started to think like well we should try to look a little bit in the future with the ground truth to make sure that the current estimate should also be.
+Able to predict the future better, and then we thought, well, why don't we take a little bit more about the past as we try to align a whole trajectory including second in the future and a second or two seconds in the past, just try to not just.
+Just simply take the current position and use past data that was basically the idea that we discussed, and if if it shouldn't be necessary, then we need to go back to take.
+A little bit. Try other things like ground truth. How what ground? Or maybe it's not a good idea to have a box of ground truth when you have a sparse sensor like the radar.
+Maybe you should take just what you see. I mean the closest point the the, the nearest point or the the front of the car or whatever you're seeing with the radar and not the centre point with a box around it.
+As for a LIDAR, it's easier to to just estimate shapes L shapes and such, but for a radar it's not really the same, so maybe the the the extended object, ground truth. Maybe it's not the best suit for a radar that is.
+
+Olof Mogren   32:53
+Mm-hmm.
+
+Haik Avetian   32:53
+Yeah.
+Right.
+
+Johan Degerman (Consultant)   33:12
+I think the other thing.
+
+Olof Mogren   33:15
+Why? Why is there a big difference between the radar and the lighter in this case?
+
+Johan Degerman (Consultant)   33:21
+Yeah, I mean the the Lidar will have a usually high resolution unless you're you're you're using imaging radar such as the continental or or other imaging radars. But they tend to be really noisy.
+
+Haik Avetian   33:21
+Yeah.
+
+Olof Mogren   33:32
+Hmm.
+
+Johan Degerman (Consultant)   33:40
+I worked quite a lot with those, so if if you have a more cheaper radar and more simple radar, it doesn't really show you the the the extent in all cases. It's only when you're near and you see side or whatever. It's only when the geometry favours.
+Seeing shapes but at far distance a hundred 150 metres or even 50 metres, it's not certain that the geometry favours detection of the actual shape.
+Or there'll be act.
+
+Olof Mogren   34:14
+Hmm.
+
+Haik Avetian   34:17
+Yeah.
+
+Olof Mogren   34:18
+Yeah, yeah. I mean it's it. It depends on on what's in the data and and how how predictive is the data and and what's the variability of the data.
+
+Haik Avetian   34:27
+Yeah, yeah.
+
+Olof Mogren   34:31
+I mean these these issues, I mean one hypothesis would also be that well if you continue training, if you have infinite amount of data then maybe you will learn to to make the predictions more smooth and maybe we'll learn to actually predict the actual centre of the of of an obstacle.
+
+Johan Degerman (Consultant)   34:45
+Yeah.
+
+Olof Mogren   34:50
+Because you you, you could probably learn those kinds of things if it's in the if it's in the training data.
+
+Johan Degerman (Consultant)   34:56
+Oh.
+
+Haik Avetian   34:57
+Yeah.
+Well.
+
+Olof Mogren   35:06
+So what are we looking at now?
+
+Haik Avetian   35:08
+That's one of the first object detectors for radar data that I made with Carla, and the rotations is a bit misaligned.
+
+Olof Mogren   35:18
+Hmm.
+
+Haik Avetian   35:24
+I fixed it now, but you can see that it predicts predicts it pretty well. It's a bit jumps around a little bit. The green is the ground truth. The red One is the prediction.
+And one of the issues here is there's you can see ground truth popping up before it might before it should. Sometimes I've. And that's one of the things I've fixed in the.
+
+Olof Mogren   35:54
+What does that mean?
+
+Haik Avetian   35:59
+Recently now.
+
+Olof Mogren   36:01
+What does it mean that it popped up before?
+
+Haik Avetian   36:03
+It means that if you don't have a detection on the car, then it shouldn't try to predict it. Or if you don't have continuous detections on a car, it shouldn't try to predict it. This this data was trained on everything that was inside of the field of view.
+
+Olof Mogren   36:09
+OK.
+Fair enough.
+
+Haik Avetian   36:19
+Uh.
+
+Olof Mogren   36:20
+Yeah.
+
+Johan Degerman (Consultant)   36:21
+Hmm.
+
+Haik Avetian   36:21
+Yeah.
+With a detection at the last time step, I think I've refined that a little bit now.
+
+Johan Degerman (Consultant)   36:32
+So what what we found from the beginning is that the that the network is really good to deselecting clutter from from the scene, but it's quite poor to give a smooth estimate with a good prediction.
+For the actual targets, so it kind of removes backgrounds very good, but the foreground is is looking noisy. I think we struggled with this issue even for simulated data for a while now so.
+
+Haik Avetian   36:51
+Yeah.
+Yeah.
+
+Johan Degerman (Consultant)   37:06
+And we have looked at several data sets, real data sets and and going forward, I think the the idea here is to continue working with this, trying to found find the root cause of the unsmoothness.
+
+Rolando Esquivel   37:15
+Yeah.
+
+Johan Degerman (Consultant)   37:23
+And poor velocity vector of of the the targets and to also move forward to collect collecting new data sets, we actually have a new radar safe radar which we would like to to test and use which is very simple and very.
+Cheap.
+So. So we plan on doing recordings at the solo with those hopefully in a month. It's a $200.00 radar and it should be very.
+
+Haik Avetian   37:58
+Yeah.
+
+Johan Degerman (Consultant)   38:00
+For for the safety case, but not for the imaging radar case.
+
+Rolando Esquivel   38:07
+Yeah.
+
+Johan Degerman (Consultant)   38:09
+And that's why we we are currently not we, we're not simulating an imaging radar, we're we're more on stimulating and more sparse radar.
+Doing safety focus on safety rather than localization or or or things like that.
+
+Olof Mogren   38:27
+Hmm.
+The data when you have trained on Carla data, have you inspected sort of what is the variability of this data and what is the the size of the data that you have have generated? What I mean it in the Carla data you're you're detecting cars, is that right?
+
+Johan Degerman (Consultant)   38:47
+Yeah, mainly.
+
+Olof Mogren   38:49
+And and I mean, do the cars look different or do we have different weather conditions? Is it, do we have different colours and different lighting and and stuff like that?
+
+Johan Degerman (Consultant)   38:56
+Oh.
+
+Haik Avetian   39:02
+No, the so far the cars have been very similar. There's only been one map to train on, no more than an hour's worth of continuous segments, so it's very sparse and very simple.
+
+Olof Mogren   39:08
+Hmm.
+Hmm.
+Yeah. And that I think that's good.
+
+Haik Avetian   39:21
+And.
+
+Johan Degerman (Consultant)   39:21
+Yeah, maybe isolate problem here so you indicate the rule of the we need maybe a larger data set.
+
+Olof Mogren   39:31
+Yeah, I it's good to start with a small data set. It's good to start and see that we learn that data. It's actually one of the sort of first things you should do with mission learning is to train on a small data set and see if you can overfit.
+
+Haik Avetian   39:31
+Play song.
+
+Olof Mogren   39:46
+If you can overfit that then then you have sort of identified that the the model can learn this kind of data. So you could go both ways. You could sort of see if you can.
+
+Johan Degerman (Consultant)   39:47
+Hmm.
+
+Haik Avetian   39:54
+Hmm.
+
+Olof Mogren   40:01
+If you can make it really simple and then make sure that the model can learn this, then you should not expect it to. To generalise, we should not expect it to to be able to make predictions on on other data, because to do that you need you need to scale the data up and and have have the.
+
+Rolando Esquivel   40:12
+Yeah.
+
+Olof Mogren   40:20
+Kind of variabilities that that you expect to have in, in the test data?
+
+Haik Avetian   40:26
+Hmm.
+Yeah. Well, that's we could definitely apply that in a few training iterations. It's quite straightforward to add a few more trucks and motorcycles.
+
+Olof Mogren   40:38
+Yeah.
+
+Haik Avetian   40:44
+So, sure. And pedestrians?
+
+Olof Mogren   40:46
+Yeah.
+
+Haik Avetian   40:48
+We've been thinking with the idea to not only predict cars, but also predict stationary objects within Carla, so we can we can, I believe we can output the bounding boxes on buildings at least and traffic lights and pedestrians, I believe so.
+
+Rolando Esquivel   40:55
+You.
+
+Haik Avetian   41:06
+That can be a step to implement relatively easily in the foreseeable close future.
+
+Olof Mogren   41:14
+Yeah.
+Have we gone through the the three different action items that was sort of labelled safe radar complete the lanic two third training run evaluation, resume, radar scenes, model training and implement temporal augmentation training?
+
+Haik Avetian   41:20
+So yeah.
+
+Rolando Esquivel   41:22
+Yeah.
+
+Haik Avetian   41:36
+I think those were the perhaps. I mean I've wrapped up the radar scenes for now. I've evaluated the our own radar and create a pipeline to train on that so.
+All I need is more data to work with.
+
+Olof Mogren   41:52
+Hmm.
+
+Haik Avetian   41:57
+Yeah, I think that's basically those two things.
+And what was the third one? I don't think it was.
+
+Olof Mogren   42:05
+Implement temporal augmentation training.
+
+Haik Avetian   42:09
+Several elementary I thinking yeah, I added a simple simple time to vector encoder, so that's that's done. And actually, yeah.
+Didn't mention but it worked. Worked a bit better. I got better lower losses with that, so that's good.
+
+Olof Mogren   42:35
+Good. And let me see.
+
+Haik Avetian   42:36
+Yeah.
+
+Olof Mogren   42:43
+Play song.
+We have now we have mostly talked about the different action points and we haven't. Well, we haven't talked a little a lot about the tasks as well, but but that was sort of on the agenda as well going through task 21 and OPS power pipeline 22 simulation, synthetic data and two 3:00 AM models.
+We talked a bit about the AI models today. We talked a little bit about the pipeline as well. Do we have some, some things we want to add in in this perspective?
+
+Rolando Esquivel   43:20
+Yeah, about analogue pipelines. They need to look around the page of building the training infrastructure in clouds.
+So initially we did a little bit of fun.
+
+Olof Mogren   43:36
+Sorry, what I'm saying you're building.
+
+Rolando Esquivel   43:42
+Training, training infrastructure involved. So basically we need an orchestration for structure to do training and less in cloud initially we.
+
+Olof Mogren   43:42
+I couldn't hear what you said.
+Yeah.
+
+Rolando Esquivel   43:57
+There's a little bit of training there and some experiments locally just on our local computers, but it's on its own site set of data, but we get the limits and now the goal is to.
+Try to do different parameter tuning and to try to train. I just want small subset of data to try to use a lot more data and we've already seen that we're hitting on limits there.
+In terms of just taking to to long time to actually train something, so where it is possible to kind of actually to actually to.
+It's very important still for powerful GPUs run more experiments parallel, so we expect this is going to be done in the next couple of weeks, so.
+The next couple of weeks we should have our infrastructure cloud to do all this, not locally, but.
+
+Olof Mogren   45:22
+Sounds good. Then this may be an update that we can expect for for the next, the next meeting in four weeks.
+
+Rolando Esquivel   45:28
+Yeah.
+Yeah. And I just want to add that we have already seen some nice results training locally for few days on a laptop and we can confirm that what you already heard that.
+Training only on our data overfits them a little bit. So if you want to be general, our experience was that we need to include general data sets as well as our data and we want to. We have ideas what to try. Lots of fibre parameters.
+Even more data, some data implementation, but for that we need the cloud training because to run parallel to to be sustainable only training.
+
+Olof Mogren   46:09
+Hmm.
+
+Rolando Esquivel   46:19
+Actions.
+
+Olof Mogren   46:21
+Yes, yeah, date augmentation and and perhaps some regularisation techniques could could be good ideas to explore.
+
+Rolando Esquivel   46:31
+Yes, we are looking into very simple augmentations, but then also trying to experiment with state-of-the-art processes for that. But yeah, that's just.
+
+Olof Mogren   46:43
+Hmm.
+
+Rolando Esquivel   46:48
+Some experimenting.
+
+Olof Mogren   46:52
+Oh.
+Have have you considered any self supervised pre training?
+
+Rolando Esquivel   47:06
+Not. Not really yet.
+
+Olof Mogren   47:09
+Hmm.
+
+Rolando Esquivel   47:11
+We were transfer training existing models.
+On on our data set.
+But the the maybe something that we need to look into.
+
+Olof Mogren   47:28
+Yeah, I think I think you could imagine even without changing the architecture of the models. I mean typically with the with the self supervised pre training you have some part of the model that you pre train.
+But I assume that you could do it with with the whole thing, given that you sort of just come up with with good targets to predict. And if you do that, there's a pre training step that that could.
+
+Rolando Esquivel   47:56
+OK.
+
+Olof Mogren   48:01
+Could could give a good initialization for them all.
+
+Rolando Esquivel   48:05
+Delete.
+So far we were transfer training existing models for the camera segment. The computer vision camera segmentation and an idea that we were looking into is to have.
+
+Olof Mogren   48:10
+He may be important.
+
+Rolando Esquivel   48:25
+Restrain general model and free some layers and try to fine tune the top or the head of the model. For our case with the with the features already trained into the into the model.
+But this is also just an idea in our big list. We haven't tried this yet, but when we get the cloud training we we can go through all these ideas.
+
+Olof Mogren   48:42
+Hmm.
+Hmm.
+Hmm.
+Yeah, that sounds sounds good. Those are. They're when you have that up and running then then we can start to see looking at some some numbers and and compare some different training strategies perhaps.
+
+Rolando Esquivel   49:04
+MMM.
+Yeah.
+
+Olof Mogren   49:10
+Sounds good. We should wrap up this meeting. I will need to head over to my next meeting, but it seems like we have a lot of good progress.
+
+Rolando Esquivel   49:18
+Hello.
+We have this baseline. I don't know if we have a couple of minutes to go through. Yeah. So we can, yeah. And share with me.
+
+Olof Mogren   49:26
+Yeah, yeah.
+
+Rolando Esquivel   49:37
+So yeah, that's basically baseline that we have on our side. We have image segmentation and this is type of the data set that we have.
+Here is a person.
+
+Jacopo Gaetani   49:53
+Rolando, it's very blurred for me. I don't know if it's only for me or for everybody.
+
+Rolando Esquivel   49:56
+Oh yeah.
+
+Olof Mogren   50:01
+It's a little blurry, but it's I can see the can see the video.
+
+Rolando Esquivel   50:01
+Sweet.
+Yeah, but it's not. Shouldn't be like that resolution. Then we share the other screen.
+Is it sharp? You can just so late here actually. Then play this first because everything's. Yeah. So this is video. This is the task.
+
+Olof Mogren   50:15
+Looks better now.
+
+Rolando Esquivel   50:28
+So we have human detection there and this is the reproject the reprojection of the radar point log and then we do cluster on that on that reprojection. And this is the human detection.
+OK.
+Yeah, on this scenario.
+So yeah, that's basically like like the simple simple baseline. Simplest baseline that we have. It's yeah, camera detection and then point log reprojection in cluster.
+
+Olof Mogren   51:04
+Hmm.
+
+Rolando Esquivel   51:05
+So yeah, same like this is different scenario. But yeah we have human here.
+And yeah, and it's tested from the camera and we get the detection of the human so.
+Does the simplest approach.
+
+Olof Mogren   51:26
+Was this was this the same baseline?
+
+Rolando Esquivel   51:29
+Yeah, it's the same. It's the same algorithm, just different scenario and this is playing radar data and later data, but it's same same same model.
+
+Olof Mogren   51:43
+Mm-hmm.
+
+Rolando Esquivel   51:45
+This yeah.
+Different presentation, but yeah, it's detection of the human there based on the on the camera segmentation.
+
+Olof Mogren   51:53
+Hmm.
+Good.
+
+Rolando Esquivel   51:59
+So yeah, that's gonna be our baseline. So everything should be better than that.
+
+Olof Mogren   52:05
+Hmm.
+
+Rolando Esquivel   52:07
+Yep.
+
+Johan Degerman (Consultant)   52:08
+Which radar did you use?
+
+Rolando Esquivel   52:12
+Radar. You mean? Yeah, this is Bosch. Radar off Hwy. Yeah.
+
+Johan Degerman (Consultant)   52:13
+Yeah.
+Hmm.
+Yeah. Oh, oh, five radar.
+
+Rolando Esquivel   52:22
+Yeah.
+
+Johan Degerman (Consultant)   52:23
+HOW? Yeah, I worked with that one.
+
+Rolando Esquivel   52:25
+Yeah. Yeah, that's good. Yeah, we have that point clock there.
+
+Johan Degerman (Consultant)   52:28
+OK.
+Actually that is OK. Meeting is over. We can talk about the Bosch OHW some other time. But I have a lot of experience from the mining industry with a Bosch OHW radar.
+
+Rolando Esquivel   52:41
+Look.
+Hmm.
+
+Johan Degerman (Consultant)   52:51
+But let's out when we have time.
+
+Rolando Esquivel   52:51
+OK. Yeah.
+Yeah, that's that would be great. Yeah, that's good.
+
+Johan Degerman (Consultant)   52:57
+Mm-hmm.
+
+Olof Mogren   52:57
+Yeah, we can schedule a schedule a special meeting for that.
+
+Johan Degerman (Consultant)   52:59
+And.
+
+Rolando Esquivel   52:59
+Yeah.
+
+Johan Degerman (Consultant)   53:02
+Yeah. Anyway, just you're saying I will continue with in a month or so, maybe we don't have it before next meeting. If it's in four weeks, but we will schedule recordings at oops. All on our with a new radar that we have.
+
+Rolando Esquivel   53:02
+Yeah.
+
+Olof Mogren   53:16
+Yeah.
+
+Johan Degerman (Consultant)   53:19
+The four channel the cheap one, so yeah, that's just in the plan. And I think that is we we we are currently.
+Sort of trying to look more real data. Although simulation is not perfect results, but that's we need to sort of make it a little bit pivot involve more people in the company and such.
+Yeah.
+
+Olof Mogren   53:50
+Hmm.
+So perhaps if you have, if you have started by the next week meeting, you can give an update on how how it's going and and what are some challenges in in the in the data collection.
+
+Johan Degerman (Consultant)   53:59
+Yeah.
+Yeah.
+
+Olof Mogren   54:07
+All right, great.
+Thank you all for this meeting. I'll send out some some minutes and and then we'll meet again in four weeks, I think.
+It's. Yeah, it's the October 21st.
+
+Johan Degerman (Consultant)   54:21
+Huh.
+
+Rolando Esquivel   54:26
+Thank you so much.
+
+Olof Mogren   54:26
+Good.
+Thank you.
+
+Johan Degerman (Consultant)   54:28
+Thank you. Bye bye.
+
+Haik Avetian   54:29
+Thanks, bye.
+
+Rolando Esquivel   54:30
+Much.
+
+Olof Mogren stopped transcription
+

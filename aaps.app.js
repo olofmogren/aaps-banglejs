@@ -39,6 +39,8 @@ let lastStepCount = 0;
 let lastReadEventFile = -1
 let dialogActive = false; //hinders the watch face from updating the screen.
 let lastDrawMinutes = -1;
+let currentDebugLog = 0;
+let runningDebugLog = '';
 
 // === DATA HANDLING AND DRAWING ===
 
@@ -600,6 +602,7 @@ function loadSettings() {
     swipeLeft: '',
     swipeRight: '',
     swipeBottomUp: '',
+    debugLogs: 0,
     uploadHR: false,
     uploadSteps: false,
   };
@@ -717,11 +720,15 @@ function updateCurrentData() {
       }
     }
     needsRedraw = currentStatusData[key] != val;
+    if (key=='ts') {
+      runningDebugLog += 'updateCurrentData: old ts: '+currentStatusData.ts+', new ts: '+val+'\n';
+    }
     currentStatusData[key] = +val;
   }
   
   // save every five minutes (more than 4.5) in historyData.glucose:
   let timeDiff = currentStatusData.ts - (lastTimestamp(historyData.glucose));
+  runningDebugLog += 'updateCurrentData: timeDiff: '+timeDiff+'\n';
   //console.log("bg timediff: "+(timeDiff/1000)+"s");
   let allowAfter = Math.round(4.5 * 60 * 1000);
   //console.log("allowed: "+allowAfter);
@@ -736,6 +743,7 @@ function updateCurrentData() {
     /*while (historyData.basals.length > 1 && historyData.basals[historyData.basals.length-1].ts > allowAfter) {
       historyData.basals.pop();
     }*/
+    runningDebugLog += 'updateCurrentData: insertSorted('+historyData.basals.length+' '+currentStatusData.ts+' '+currentStatusData.basal+'\n';
     insertSorted(historyData.basals, {ts: currentStatusData.ts, rate: currentStatusData.basal}, ninetyMinutesAgoMillis, true, "rate");
   }
   return needsRedraw;
@@ -757,6 +765,7 @@ function checkForNewHistory() {
       //let lines = content.split('\n');
       let lastUpdated = (f == HISTORY_BG_FILE)?historyData.glucoseUpdated:(f == HISTORY_INSULIN_FILE)?historyData.insulinUpdated:historyData.basalsUpdated;
       if (historyData.stale) {
+        runningDebugLog += 'historyData stale. resetting.'+'\n';
         historyData = { glucose: [], insulin: [], carbs: [], basals: [], glucoseUpdated: -1, insulinUpdated: -1, carbsUpdated: -1, basalsUpdated: -1, stale: false };
       }
       //console.log("lastUpdated:"+lastUpdated)
@@ -783,6 +792,7 @@ function checkForNewHistory() {
               insertSorted(historyData.insulin, obj, ninetyMinutesAgoMillis, false, "amount");
           }
           else if (f == HISTORY_BASALS_FILE) {
+            runningDebugLog += 'checkForNewHistory: insertSorted('+historyData.basals.length+' '+obj.ts+' '+obj.rate+'\n';
             insertSorted(historyData.basals, obj, ninetyMinutesAgoMillis, true, "rate");
           }
         }
@@ -924,7 +934,14 @@ function showMainMenu() {
   E.showMenu(mainMenu);
 }
 function housekeeping() {
-  require("Storage").write("aaps.debug", JSON.stringify(historyData.basals));
+  console.log('housekeeping');
+  if (settings['debugLogs'] > 0) {
+    currentDebugLog = (currentDebugLog+1)%settings['debugLogs'];
+    let fileName = "aaps.debug."+currentDebugLog;
+    console.log('configured to save logs. saving '+fileName);
+    require("Storage").write(fileName, (Date.now())+'\n\n'+JSON.stringify(historyData.basals)+' \n\n'+runningDebugLog);
+    runningDebugLog = '';
+  }
 }
 
 function start() {
@@ -939,7 +956,7 @@ function start() {
   lib.sendCommand("RequestInitialData", {});
   processFiles(); // Initial read
   
-  setInterval(housekeeping, 5*60000); // Poll files every 5s
+  setInterval(housekeeping, 1*60000); // Poll files every 5s
   setInterval(processFiles, 5000); // Poll files every 5s
   Bangle.on('lcdPower', (on) => { if (on) draw(); });
   // Call the function to enable all our gestures

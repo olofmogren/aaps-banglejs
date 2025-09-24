@@ -14,7 +14,7 @@
     swipeLeft: '',
     swipeRight: '',
     swipeBottomUp: '',
-    // NEW: Defaults for uploads (opt-in, so 'false')
+    debugLogs: 0,
     uploadHR: false,
     uploadSteps: false,
   };
@@ -55,6 +55,14 @@
     'Swipe Left': createGestureMenuItem('swipeLeft'),
     'Swipe Right': createGestureMenuItem('swipeRight'),
     'Bottom-Up Swipe': createGestureMenuItem('swipeBottomUp'),
+    'Debug log files':  {
+      value: settings['debugLogs']|0,
+      min: 0, max: 10, step: 1,
+      format: v => v,
+      onchange: v => {
+        save('debugLogs', v);
+      },
+    },
 
     // --- Data Uploads Sub-Menu ---
     'Data Uploads': { 'title': '-- Data Uploads --' },

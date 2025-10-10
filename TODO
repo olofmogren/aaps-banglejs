@@ -1,0 +1,1 @@
+when we have history for less than 90 mins (say last 45 mins). a complete refresh refreshes the other part ofnhistory, but deletes the part thatbwe already had.

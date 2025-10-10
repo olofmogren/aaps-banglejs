@@ -138,7 +138,8 @@ function draw() {
   }
 
   // --- This is how we keep the time updated ---
-  if (clockInterval) clearInterval(clockInterval);
+  if (clockInterval) clearTimeout(clockInterval);
+  clockInterval = undefined;
   clockInterval = setTimeout(() => {
     if (Bangle.isLCDOn()){
       draw();
@@ -185,7 +186,7 @@ function drawLeftColumn(x, y, w, h) {
   }
 
   if (minutesAgo > 5) {
-    let textColor = "#999";
+    textColor = "#999";
   }
   
   g.setFontAlign(0, 0);
@@ -220,6 +221,7 @@ function drawLeftColumn(x, y, w, h) {
 
   g.setFont("Vector", 14).setFontAlign(0, 0);
   
+  g.drawString(process.memory().free, x + w/2, y + h - 76);
   let lengths = historyData.glucose.length + " " + historyData.insulin.length + " " + historyData.basals.length;
   g.drawString(lengths, x + w/2, y + h - 64);
   
@@ -531,6 +533,7 @@ function drawBottomRightGraph(x, y, w, h) {
 
 // This is the new, complete gesture handling function.
 function setupGestures() {
+  console.log("setupGestures()");
   let drag; // To track swipe events
 
   Bangle.on('drag', e => {
@@ -721,14 +724,19 @@ function updateCurrentData() {
     }
     needsRedraw = currentStatusData[key] != val;
     if (key=='ts') {
-      runningDebugLog += 'updateCurrentData: old ts: '+currentStatusData.ts+', new ts: '+val+'\n';
+      if (settings['debugLogs'] > 0){
+        runningDebugLog += 'updateCurrentData: old ts: '+currentStatusData.ts+', new ts: '+val+'\n';
+      }
     }
     currentStatusData[key] = +val;
   }
   
   // save every five minutes (more than 4.5) in historyData.glucose:
+  
   let timeDiff = currentStatusData.ts - (lastTimestamp(historyData.glucose));
-  runningDebugLog += 'updateCurrentData: timeDiff: '+timeDiff+'\n';
+  if (settings['debugLogs'] > 0){
+    runningDebugLog += 'updateCurrentData: timeDiff: '+timeDiff+'\n';
+  }
   //console.log("bg timediff: "+(timeDiff/1000)+"s");
   let allowAfter = Math.round(4.5 * 60 * 1000);
   //console.log("allowed: "+allowAfter);
@@ -743,7 +751,9 @@ function updateCurrentData() {
     /*while (historyData.basals.length > 1 && historyData.basals[historyData.basals.length-1].ts > allowAfter) {
       historyData.basals.pop();
     }*/
-    runningDebugLog += 'updateCurrentData: insertSorted('+historyData.basals.length+' '+currentStatusData.ts+' '+currentStatusData.basal+'\n';
+    if (settings['debugLogs'] > 0){
+      runningDebugLog += 'updateCurrentData: insertSorted('+historyData.basals.length+' '+currentStatusData.ts+' '+currentStatusData.basal+'\n';
+    }
     insertSorted(historyData.basals, {ts: currentStatusData.ts, rate: currentStatusData.basal}, ninetyMinutesAgoMillis, true, "rate");
   }
   return needsRedraw;
@@ -765,21 +775,13 @@ function checkForNewHistory() {
       //let lines = content.split('\n');
       let lastUpdated = (f == HISTORY_BG_FILE)?historyData.glucoseUpdated:(f == HISTORY_INSULIN_FILE)?historyData.insulinUpdated:historyData.basalsUpdated;
       if (historyData.stale) {
-        runningDebugLog += 'historyData stale. resetting.'+'\n';
+        if (settings['debugLogs'] > 0){
+          runningDebugLog += 'historyData stale. resetting.'+'\n';
+        }
         historyData = { glucose: [], insulin: [], carbs: [], basals: [], glucoseUpdated: -1, insulinUpdated: -1, carbsUpdated: -1, basalsUpdated: -1, stale: false };
       }
       //console.log("lastUpdated:"+lastUpdated)
-      //lines.forEach(line => {
       data.forEach(obj => {
-        //let pairs = line.split(',');
-        //let obj = {};
-        //pairs.forEach(p => {
-        //  const pair = p.split(':');
-        //  const key = pair[0]; const val = +pair[1]; //conversion to number
-        //if (key) {
-        //  obj[key] = val;
-        //}
-        //});
         if (obj.ts > lastUpdated){
           //console.log("found new data! "+obj.ts+" "+lastUpdated);
           if (f == HISTORY_BG_FILE) {
@@ -792,7 +794,9 @@ function checkForNewHistory() {
               insertSorted(historyData.insulin, obj, ninetyMinutesAgoMillis, false, "amount");
           }
           else if (f == HISTORY_BASALS_FILE) {
-            runningDebugLog += 'checkForNewHistory: insertSorted('+historyData.basals.length+' '+obj.ts+' '+obj.rate+'\n';
+            if (settings['debugLogs'] > 0){
+              runningDebugLog += 'checkForNewHistory: insertSorted('+historyData.basals.length+' '+obj.ts+' '+obj.rate+'\n';
+            }
             insertSorted(historyData.basals, obj, ninetyMinutesAgoMillis, true, "rate");
           }
         }
@@ -943,6 +947,8 @@ function housekeeping() {
     runningDebugLog = '';
   }
 }
+
+
 
 function start() {
   Bangle.setUI("clock");

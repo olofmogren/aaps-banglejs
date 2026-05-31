@@ -12,6 +12,7 @@ const lib = require('aaps-lib.js');
 
 // === GLOBAL DATA and CONSTANTS
 // ===================================================================================
+global.myCustomData = global.myCustomData || "No Data Yet";
 const MGDL_TO_MMOL = 18.0182;
 const HIGH_MMOL = 10.0;
 const LOW_MMOL = 4.0;
@@ -220,7 +221,8 @@ function drawLeftColumn(x, y, w, h) {
   drawTrendArrow(x + w/2 + 25, y + 48, currentStatusData.trend);
 
   g.setFont("Vector", 14).setFontAlign(0, 0);
-  
+
+  g.drawString(global.myCustomData, x+w, y+h-88);
   g.drawString(process.memory().free, x + w/2, y + h - 76);
   let lengths = historyData.glucose.length + " " + historyData.insulin.length + " " + historyData.basals.length;
   g.drawString(lengths, x + w/2, y + h - 64);

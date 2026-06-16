@@ -12,7 +12,6 @@ const lib = require('aaps-lib.js');
 
 // === GLOBAL DATA and CONSTANTS
 // ===================================================================================
-global.myCustomData = global.myCustomData || "No Data Yet";
 global.aapsQueue = global.aapsQueue || [];
 
 const MGDL_TO_MMOL = 18.0182;
@@ -123,10 +122,15 @@ function consumeAapsQueue() {
           runningDebugLog += 'Queue Status: old ts: '+currentStatusData.ts+', new ts: '+item.ts+'\n';
         }
 
-        // Map tracking properties dynamically
+        // Map tracking properties dynamically AND safely enforce numeric conversion
         for (let key in item) {
           if (key !== "type") {
-            currentStatusData[key] = item[key];
+            // Use parseFloat if it's a string representation of a number, otherwise keep as is
+            if (typeof item[key] === "string" && !isNaN(item[key])) {
+              currentStatusData[key] = parseFloat(item[key]);
+            } else {
+              currentStatusData[key] = item[key];
+            }
           }
         }
 
@@ -144,50 +148,63 @@ function consumeAapsQueue() {
           insertSorted(historyData.basals, {ts: currentStatusData.ts, rate: currentStatusData.basal}, ninetyMinutesAgoMillis, true, "rate");
         }
         break;
-
       case "confirmAction":
         console.log("ConfirmAction payload received via RAM pipeline.");
         handleConfirmActionJson(item);
         break;
 
       case "history_bg":
-        if (item.data && Array.isArray(item.data)) {
+        if (item.flat && Array.isArray(item.flat)) {
           let currentBgHistoryLen = historyData.glucose.length;
           let currentBgHistoryStart = (currentBgHistoryLen > 0) ? historyData.glucose[0].ts : -1;
           let currentBgHistoryEnd = (currentBgHistoryLen > 0) ? lastTimestamp(historyData.glucose) : -1;
 
-          item.data.forEach(obj => {
+          // Step by 2: i = timestamp, i+1 = blood glucose value (sgv)
+          for (let i = 0; i < item.flat.length; i += 2) {
+            let obj = { ts: item.flat[i], sgv: item.flat[i+1] };
+            // Deduplicate incoming array bounds
             if (currentBgHistoryLen == 0 || obj.ts < currentBgHistoryStart || obj.ts > currentBgHistoryEnd) {
               insertSorted(historyData.glucose, obj, ninetyMinutesAgoMillis, false, "sgv");
             }
-          });
+          }
+          needsRedraw = true;
         }
         break;
 
       case "history_insulin":
-        if (item.data && Array.isArray(item.data)) {
-          item.data.forEach(obj => {
-            insertSorted(historyData.insulin, obj, ninetyMinutesAgoMillis, false, "amount");
-          });
+        if (item.flat && Array.isArray(item.flat)) {
+          historyData.insulin = []; // Flush old timeline segment for fresh bulk sync
+          // Step by 2: i = timestamp, i+1 = insulin units
+          for (let i = 0; i < item.flat.length; i += 2) {
+            insertSorted(historyData.insulin, { ts: item.flat[i], amount: item.flat[i+1] }, ninetyMinutesAgoMillis, false, "amount");
+          }
+          needsRedraw = true;
         }
         break;
 
       case "history_carbs":
-        if (item.data && Array.isArray(item.data)) {
-          item.data.forEach(obj => {
-            insertSorted(historyData.carbs, obj, ninetyMinutesAgoMillis, false, "amount");
-          });
+        if (item.flat && Array.isArray(item.flat)) {
+          historyData.carbs = []; // Flush old timeline segment
+          // Step by 2: i = timestamp, i+1 = carb grams
+          for (let i = 0; i < item.flat.length; i += 2) {
+            insertSorted(historyData.carbs, { ts: item.flat[i], amount: item.flat[i+1] }, ninetyMinutesAgoMillis, false, "amount");
+          }
+          needsRedraw = true;
         }
         break;
 
       case "history_basal":
-        if (item.data && Array.isArray(item.data)) {
-          item.data.forEach(obj => {
+        if (item.flat && Array.isArray(item.flat)) {
+          historyData.basals = []; // Flush past cached steps to process clean compressed blocks
+          // Step by 2: i = timestamp, i+1 = raw basal rate profile float
+          for (let i = 0; i < item.flat.length; i += 2) {
+            let obj = { ts: item.flat[i], rate: item.flat[i+1] };
             if (settings['debugLogs'] > 0){
-              runningDebugLog += 'Queue Basal Array: insertSorted('+historyData.basals.length+' '+obj.ts+' '+obj.rate+'\n';
+              runningDebugLog += 'Queue Basal Array: insertSorted(' + historyData.basals.length + ' ' + obj.ts + ' ' + obj.rate + '\n';
             }
             insertSorted(historyData.basals, obj, ninetyMinutesAgoMillis, true, "rate");
-          });
+          }
+          needsRedraw = true;
         }
         break;
     }
@@ -279,14 +296,14 @@ function drawLeftColumn(x, y, w, h) {
 
   g.setFont("Vector", 14).setFontAlign(0, 0);
 
-  g.drawString(global.myCustomData, x+w, y+h-88);
   g.drawString(process.memory().free, x + w/2, y + h - 76);
   let lengths = historyData.glucose.length + " " + historyData.insulin.length + " " + historyData.basals.length;
   g.drawString(lengths, x + w/2, y + h - 64);
   
-  let basal = (currentStatusData.basal != null)?currentStatusData.basal:"---";
-  let cob = (currentStatusData.cob != "---")?Math.round(currentStatusData.cob).toString():"---";
-  let iob = currentStatusData.iob.toString();
+  
+  let basal = (currentStatusData.basal !== null && currentStatusData.basal !== undefined) ? currentStatusData.basal : "---";
+  let cob = (currentStatusData.cob !== "---" && currentStatusData.cob !== undefined) ? Math.round(currentStatusData.cob).toString() : "---";
+  let iob = (currentStatusData.iob !== undefined) ? currentStatusData.iob.toString() : "---";
   
   g.drawString("BAS: "+basal, x + w/2, y + h - 48);
   g.drawString("COB: "+cob, x + w/2, y + h - 32);
@@ -303,48 +320,72 @@ function hypot(x, y) {
 function drawTrendArrow(x, y, slope) {
   if (!slope) return;
 
+  console.log("trend arrow "+slope)
+
+  // Style (tweak to taste)
   const COLOR = "#000";
-  const L = 8;          
-  const T = 2;          
-  const HEAD_L = 4;     
-  const HEAD_W = 6;     
+  const L = 8;          // total arrow length (tail -> tip) in pixels
+  const T = 2;          // shaft thickness
+  const HEAD_L = 4;     // head length along the arrow direction
+  const HEAD_W = 6;     // head base width
 
   g.setColor(COLOR);
 
+  // --- helper: draw an arrow given a TIP and a DIRECTION vector ---
   function drawArrowTip(tipX, tipY, dirX, dirY) {
+    console.log("drawing arrow "+tipX+" "+tipY+" "+dirX+" "+dirY);
+    // normalize direction
     const len = hypot(dirX, dirY) || 1;
     const ux = dirX / len;
     const uy = dirY / len;
+
+    // perpendicular (to build thickness + head width)
     const nx = -uy;
     const ny = ux;
 
-    const baseX = tipX - ux * HEAD_L;
+    // key points along the arrow axis
+    const baseX = tipX - ux * HEAD_L; // start of head (end of shaft)
     const baseY = tipY - uy * HEAD_L;
-    const tailX = tipX - ux * L;
+    const tailX = tipX - ux * L;      // tail of shaft
     const tailY = tipY - uy * L;
 
     const halfT = T / 2;
     const halfW = HEAD_W / 2;
 
+    // shaft quad (tail -> base), offset by ±halfT along the normal
     const s1x = tailX + nx * halfT, s1y = tailY + ny * halfT;
     const s2x = tailX - nx * halfT, s2y = tailY - ny * halfT;
     const s3x = baseX - nx * halfT, s3y = baseY - ny * halfT;
     const s4x = baseX + nx * halfT, s4y = baseY + ny * halfT;
 
-    const h1x = tipX,         h1y = tipY;
+    // head triangle at the tip, base centered at (baseX, baseY)
+    const h1x = tipX,         h1y = tipY;               // tip
     const h2x = baseX + nx*halfW, h2y = baseY + ny*halfW;
     const h3x = baseX - nx*halfW, h3y = baseY - ny*halfW;
 
+    // draw (rounded to integers for crisp pixels)
     function r(v){ return Math.round(v); }
 
     g.fillPoly([
-      r(s1x), r(s1y), r(s2x), r(s2y), r(s3x), r(s3y), r(s4x), r(s4y)
+      r(s1x), r(s1y),
+      r(s2x), r(s2y),
+      r(s3x), r(s3y),
+      r(s4x), r(s4y)
     ]);
 
     g.fillPoly([
-      r(h1x), r(h1y), r(h2x), r(h2y), r(h3x), r(h3y)
+      r(h1x), r(h1y),
+      r(h2x), r(h2y),
+      r(h3x), r(h3y)
     ]);
   }
+
+  // Preserve your original *placement conventions*:
+  // - FLAT: tip at (x, y), pointing right
+  // - UP:   tip at (x, y - L), pointing up
+  // - DOWN: tip at (x, y + L), pointing down
+  // - FORTY_FIVE_UP:   tip at (x + L, y - L), pointing 45° up-right
+  // - FORTY_FIVE_DOWN: tip at (x + L, y + L), pointing 45° down-right
 
   switch (slope) {
     case "FLAT":
@@ -482,10 +523,14 @@ function drawBottomRightGraph(x, y, w, h) {
           let bolusX = graphX + graphW * (start - graphStartTime) / ninetyMinutesMillis;
           let triangle_half_width = 3;
           if (bolusX > graphX && bolusX < graphX + graphW) {
+
+              // 1. Define the 3 vertices of the triangle
               let baseline = BASELINE_BOLUSES;
-              if (+t.amount > 0.9) baseline -= 8;
-              const y_top = baseline + 8; 
-              const y_bottom = y_top + 0.866 * triangle_half_width * 2; 
+              if (+t.amount > 0.9) {
+                baseline -= 8;
+              }
+              const y_top = baseline + 8; // Top top of the triangle
+              const y_bottom = y_top + 0.866 * triangle_half_width * 2; // Bottom of the triangle (Pythagoras)
 
               const vertices = [
                 bolusX, y_top,
@@ -669,8 +714,9 @@ function showTreatmentInsulin() {
 }
 
 function hideMenuAndDraw() {
-  E.showMenu();
-  dialogActive = false;
+  //E.showMenu();
+  //dialogActive = false;
+  hideMenu();
   draw();
 }
 
@@ -678,6 +724,7 @@ function hideMenu() {
   console.log("hiding menu");
   E.showMenu();
   dialogActive = false;
+  Bangle.setUI("clock");
 }
 
 // --- UI Flow for Temp Targets ---

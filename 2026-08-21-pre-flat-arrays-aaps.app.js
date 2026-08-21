@@ -23,22 +23,7 @@ let drawTimeout;
 
 // === GLOBAL DATA and CONSTANTS ===
 let currentStatusData = { sgv: "---", delta: "---", trend: "FLAT", iob: "---", cob: "---", basal: '---', ts: 0 };
-
-let historyData = {
-  // Glucose: parallel flat arrays [t0, t1, ...], [sgv0, sgv1, ...]
-  bg_ts: [],
-  bg_sgv: [],
-
-  // Insulin boluses: parallel flat arrays [t0, t1, ...], [amount0, amount1, ...]
-  ins_ts: [],
-  ins_amount: [],
-
-  // Basals: parallel flat arrays [t0, t1, ...], [rate0, rate1, ...]
-  basal_ts: [],
-  basal_rate: [],
-
-  stale: false
-};
+let historyData = { glucose: [], insulin: [], carbs: [], basals: [], stale: false };
 let clockInterval; // To keep track of the main clock timer
 let settings;
 let tapTimeout; // to track the tap timer for double-taps
@@ -50,27 +35,78 @@ let runningDebugLog = '';
 
 // === DATA HANDLING AND DRAWING ===
 
-function trimRollingHistory(cutoffTs) {
-  // Trim glucose older than cutoff
-  while (historyData.bg_ts.length > 0 && historyData.bg_ts[0] < cutoffTs) {
-    historyData.bg_ts.shift();
-    historyData.bg_sgv.shift();
+/**
+ * Inserts an element into a sorted array while maintaining the sort order.
+ * The array and the element must have a numeric 'ts' (timestamp) property.
+ * The array is assumed to be already sorted by 'ts' in ascending order.
+ *
+ * It performs a fast check for the common case (inserting at the end)
+ * and falls back to a robust binary search for all other insertions.
+ *
+ * @param {Array<Object>} sortedArray The array to insert into (will be modified).
+ * @param {Object} newElement The new element to insert, containing a 'ts' property.
+ */
+function insertSorted(sortedArray, newElement, deleteUntilTs, onlyIfChanged, key) {
+  insertSortedHelper(sortedArray, newElement, onlyIfChanged, key);
+  deleteUntil(sortedArray, deleteUntilTs);
+}
+
+function insertSortedHelper(sortedArray, newElement, onlyIfChanged, key) {
+  if (sortedArray.length === 0) {
+    sortedArray.push(newElement);
+    return;
   }
-  // Trim insulin older than cutoff
-  while (historyData.ins_ts.length > 0 && historyData.ins_ts[0] < cutoffTs) {
-    historyData.ins_ts.shift();
-    historyData.ins_amount.shift();
+
+  const lastTS = lastTimestamp(sortedArray);
+  if (newElement.ts >= lastTS) {
+    if (newElement.ts === lastTS) {
+        sortedArray[sortedArray.length - 1] = newElement; // Update
+    } else {
+      if (!onlyIfChanged || sortedArray[sortedArray.length-1][key] != newElement[key]) {
+        sortedArray.push(newElement); // Append
+      }
+    }
+    return;
   }
-  // Keep at least one preceding basal entry to maintain the baseline step
-  while (historyData.basal_ts.length > 1 && historyData.basal_ts[1] < cutoffTs) {
-    historyData.basal_ts.shift();
-    historyData.basal_rate.shift();
+
+  let low = 0;
+  let high = sortedArray.length - 1;
+
+  while (low <= high) {
+    let mid = Math.floor((low + high) / 2);
+    let midElement = sortedArray[mid];
+
+    if (newElement.ts === midElement.ts) {
+      sortedArray[mid] = newElement; // Overwrite existing element
+      return;
+    }
+
+    if (newElement.ts < midElement.ts) {
+      high = mid - 1;
+    } else {
+      low = mid + 1;
+    }
+  }
+  
+  const insertIndex = low;
+
+  if (!onlyIfChanged || insertIndex == 0 || sortedArray[insertIndex-1][key] != newElement[key] || insertIndex == sortedArray.length || sortedArray[insertIndex] != newElement) {
+    sortedArray.splice(insertIndex, 0, newElement);
   }
 }
 
+function deleteUntil(sortedArray, deleteUntilTs){
+  if (deleteUntilTs!==undefined && sortedArray.length > 0) {
+    while (sortedArray.length > 0 && sortedArray[0].ts < deleteUntilTs ) {
+      sortedArray.shift();
+    }
+  }
+}
+
+// === NEW RAM QUEUE CONSUMER ===
 function consumeAapsQueue() {
-  let needsRedraw = (new Date().getMinutes()) !== lastDrawMinutes;
-  let ninetyMinutesAgoMillis = Date.now() - (90 * 60 * 1000);
+  let needsRedraw = (new Date().getMinutes()) != lastDrawMinutes;
+  let ninetyMinutesAgoMillis = Math.round(new Date().getTime() - 90 * 60 * 1000);
 
   while (global.aapsQueue && global.aapsQueue.length > 0) {
     let item = global.aapsQueue.shift();
@@ -80,63 +116,99 @@ function consumeAapsQueue() {
 
     switch (item.type) {
       case "status":
-        let basalChanged = currentStatusData.basal !== item.basal;
+        let basalChanged = currentStatusData.basal != item.basal;
+        
+        if (settings['debugLogs'] > 0){
+          runningDebugLog += 'Queue Status: old ts: '+currentStatusData.ts+', new ts: '+item.ts+'\n';
+        }
 
+        // Map tracking properties dynamically AND safely enforce numeric conversion
         for (let key in item) {
           if (key !== "type") {
-            if (typeof item[key] === "string" && !isNaN(item[key].trim())) {
-              currentStatusData[key] = parseFloat(item[key].trim());
+            // Use parseFloat if it's a string representation of a number, otherwise keep as is
+            if (typeof item[key] === "string" && !isNaN(item[key])) {
+              currentStatusData[key] = parseFloat(item[key]);
             } else {
               currentStatusData[key] = item[key];
             }
           }
         }
 
-        // Realtime BG is strictly newer: append directly to flat arrays
-        if (currentStatusData.ts > 0 && currentStatusData.sgv !== "---") {
-          let lastBgTs = historyData.bg_ts.length > 0 ? historyData.bg_ts[historyData.bg_ts.length - 1] : 0;
-          if (currentStatusData.ts > lastBgTs) {
-            historyData.bg_ts.push(currentStatusData.ts);
-            historyData.bg_sgv.push(currentStatusData.sgv);
-          }
+        // Inline appending to rolling glucose history
+        let timeDiff = currentStatusData.ts - (lastTimestamp(historyData.glucose));
+        let allowAfter = Math.round(4.5 * 60 * 1000);
+        if (timeDiff > allowAfter){
+          insertSorted(historyData.glucose, {ts: currentStatusData.ts, sgv: currentStatusData.sgv}, ninetyMinutesAgoMillis, false, "sgv");
         }
 
-        // Realtime Basal step update
-        if (basalChanged && typeof currentStatusData.basal === "number") {
-          historyData.basal_ts.push(currentStatusData.ts);
-          historyData.basal_rate.push(currentStatusData.basal);
+        if (basalChanged) {
+          if (settings['debugLogs'] > 0){
+            runningDebugLog += 'Queue Status Basal Update: insertSorted('+historyData.basals.length+' '+currentStatusData.ts+' '+currentStatusData.basal+'\n';
+          }
+          insertSorted(historyData.basals, {ts: currentStatusData.ts, rate: currentStatusData.basal}, ninetyMinutesAgoMillis, true, "rate");
         }
+        break;
+      case "confirmAction":
+        console.log("ConfirmAction payload received via RAM pipeline.");
+        handleConfirmActionJson(item);
         break;
 
       case "history_bg":
-        if (Array.isArray(item.ts) && Array.isArray(item.sgv)) {
-          // Authoritative replacement - zero merging overhead
-          historyData.bg_ts = item.ts;
-          historyData.bg_sgv = item.sgv;
+        if (item.flat && Array.isArray(item.flat)) {
+          let currentBgHistoryLen = historyData.glucose.length;
+          let currentBgHistoryStart = (currentBgHistoryLen > 0) ? historyData.glucose[0].ts : -1;
+          let currentBgHistoryEnd = (currentBgHistoryLen > 0) ? lastTimestamp(historyData.glucose) : -1;
+
+          // Step by 2: i = timestamp, i+1 = blood glucose value (sgv)
+          for (let i = 0; i < item.flat.length; i += 2) {
+            let obj = { ts: item.flat[i], sgv: item.flat[i+1] };
+            // Deduplicate incoming array bounds
+            if (currentBgHistoryLen == 0 || obj.ts < currentBgHistoryStart || obj.ts > currentBgHistoryEnd) {
+              insertSorted(historyData.glucose, obj, ninetyMinutesAgoMillis, false, "sgv");
+            }
+          }
+          needsRedraw = true;
         }
         break;
 
       case "history_insulin":
-        if (Array.isArray(item.ts) && Array.isArray(item.amount)) {
-          historyData.ins_ts = item.ts;
-          historyData.ins_amount = item.amount;
+        if (item.flat && Array.isArray(item.flat)) {
+          historyData.insulin = []; // Flush old timeline segment for fresh bulk sync
+          // Step by 2: i = timestamp, i+1 = insulin units
+          for (let i = 0; i < item.flat.length; i += 2) {
+            insertSorted(historyData.insulin, { ts: item.flat[i], amount: item.flat[i+1] }, ninetyMinutesAgoMillis, false, "amount");
+          }
+          needsRedraw = true;
+        }
+        break;
+
+      case "history_carbs":
+        if (item.flat && Array.isArray(item.flat)) {
+          historyData.carbs = []; // Flush old timeline segment
+          // Step by 2: i = timestamp, i+1 = carb grams
+          for (let i = 0; i < item.flat.length; i += 2) {
+            insertSorted(historyData.carbs, { ts: item.flat[i], amount: item.flat[i+1] }, ninetyMinutesAgoMillis, false, "amount");
+          }
+          needsRedraw = true;
         }
         break;
 
       case "history_basal":
-        if (Array.isArray(item.ts) && Array.isArray(item.rate)) {
-          historyData.basal_ts = item.ts;
-          historyData.basal_rate = item.rate;
+        if (item.flat && Array.isArray(item.flat)) {
+          historyData.basals = []; // Flush past cached steps to process clean compressed blocks
+          // Step by 2: i = timestamp, i+1 = raw basal rate profile float
+          for (let i = 0; i < item.flat.length; i += 2) {
+            let obj = { ts: item.flat[i], rate: item.flat[i+1] };
+            if (settings['debugLogs'] > 0){
+              runningDebugLog += 'Queue Basal Array: insertSorted(' + historyData.basals.length + ' ' + obj.ts + ' ' + obj.rate + '\n';
+            }
+            insertSorted(historyData.basals, obj, ninetyMinutesAgoMillis, true, "rate");
+          }
+          needsRedraw = true;
         }
-        break;
-
-      case "confirmAction":
-        handleConfirmActionJson(item);
         break;
     }
   }
-
-  trimRollingHistory(ninetyMinutesAgoMillis);
 
   if (needsRedraw) {
     draw();
@@ -225,8 +297,9 @@ function drawLeftColumn(x, y, w, h) {
   g.setFont("Vector", 14).setFontAlign(0, 0);
 
   g.drawString(process.memory().free, x + w/2, y + h - 76);
-  let lengths = historyData.bg_ts.length + " " + historyData.ins_ts.length + " " + historyData.basal_ts.length;
-  g.drawString(lengths, x + w / 2, y + h - 64);
+  let lengths = historyData.glucose.length + " " + historyData.insulin.length + " " + historyData.basals.length;
+  g.drawString(lengths, x + w/2, y + h - 64);
+  
   
   let basal = (currentStatusData.basal !== null && currentStatusData.basal !== undefined) ? currentStatusData.basal : "---";
   let cob = (currentStatusData.cob !== "---" && currentStatusData.cob !== undefined) ? Math.round(currentStatusData.cob).toString() : "---";
@@ -363,14 +436,13 @@ function drawBottomRightGraph(x, y, w, h) {
   const graphW = w - (margin * 2);
   const MIN_MMOL_SCALE = 2.0;
   const MAX_MMOL_SCALE = 14.0;
-  const BASELINE_XTICKS = y + h - 6;
-  const BASELINE_BG = y + h - 24;
-  const BASELINE_BASALS = y + h - 12;
-  const BASELINE_BOLUSES = y + h - 16;
-  const BASAL_SCALE = 16.0;
-
-  // Draw High/Low Target Thresholds
-  let threshColor = g.getBgColor() === "#ffffff" ? [0.8, 0, 0] : [0, 0, 0];
+  const BASELINE_XTICKS = y+h-6;
+  const BASELINE_BG = y+h-24;
+  const BASELINE_BASALS = y+h-12;
+  const BASELINE_BOLUSES = y+h-16;
+  const BASAL_SCALE = 16.0; 
+  
+  let threshColor = g.getBgColor() == "#ffffff" ? [0.8,0,0] : [0,0,0];
   g.setColor.apply(g, threshColor);
   let highY = BASELINE_BG - (((HIGH_MMOL - MIN_MMOL_SCALE) / (MAX_MMOL_SCALE - MIN_MMOL_SCALE)) * h);
   let lowY = BASELINE_BG - (((LOW_MMOL - MIN_MMOL_SCALE) / (MAX_MMOL_SCALE - MIN_MMOL_SCALE)) * h);
@@ -378,49 +450,52 @@ function drawBottomRightGraph(x, y, w, h) {
   g.drawLine(graphX, lowY, graphX + graphW, lowY);
 
   let nowDate = new Date();
-  let now = nowDate.getTime();
+  let now = Math.round(nowDate.getTime());
   let ninetyMinutesMillis = 90 * 60 * 1000;
   let graphStartTime = now - ninetyMinutesMillis;
 
-  // Draw Hour Gridlines
-  let lastHourX = x + w - (nowDate.getMinutes() * (w / 90));
-  let lastHourLabel = nowDate.getHours() + ":00";
-  let previousHourX = lastHourX - 60 * (w / 90);
-  let previousHourLabel = (nowDate.getHours() - 1) + ":00";
-
-  g.setColor("#000000").setFont("Vector", 12).setFontAlign(0, 0);
+  let lastHourX = x+w-(nowDate.getMinutes()*(w/90));
+  let lastHourLabel = nowDate.getHours()+":00";
+  let previousHourX = lastHourX-60*(w/90);
+  let previousHourLabel = (nowDate.getHours()-1)+":00";
+  g.setColor("#000000");
+  g.setFont("Vector", 12).setFontAlign(0, 0);
   g.drawString(lastHourLabel, lastHourX, BASELINE_XTICKS);
-  g.setColor("#808080").drawLine(lastHourX, BASELINE_XTICKS, lastHourX, y);
-
+  g.setColor("#808080");
+  g.drawLine(lastHourX, BASELINE_XTICKS, lastHourX, y);
   if (previousHourX > graphX) {
-    g.setColor("#000000").drawString(previousHourLabel, previousHourX, BASELINE_XTICKS);
-    g.setColor("#808080").drawLine(previousHourX, BASELINE_XTICKS, previousHourX, y);
+    g.setColor("#000000");
+    g.drawString(previousHourLabel, previousHourX, BASELINE_XTICKS);
+    g.setColor("#808080");
+    g.drawLine(previousHourX, BASELINE_XTICKS, previousHourX, y);
   }
-
-  // --- Basal Rendering ---
-  const basalCount = historyData.basal_ts.length;
-  if (basalCount > 0) {
+  
+  // Basals Rendering
+  if (historyData.basals.length > 0) {
     let maxBasal = 0.0;
-    for (let i = 0; i < basalCount; i++) {
-      if (historyData.basal_rate[i] > maxBasal) maxBasal = historyData.basal_rate[i];
+    for (let i = 0; i < historyData.basals.length; i++) {
+      if (historyData.basals[i].rate > maxBasal) {
+          maxBasal = historyData.basals[i].rate;
+      }
     }
     if (maxBasal === 0) maxBasal = 1.0;
 
     let lastY = BASELINE_BASALS;
     let lastVerticalBarX = graphX;
 
-    for (let i = 0; i < basalCount; i++) {
-      let bTs = historyData.basal_ts[i];
-      let bRate = historyData.basal_rate[i];
-      let nextTs = (i + 1 < basalCount) ? historyData.basal_ts[i + 1] : now;
+    for (let i = 0; i < historyData.basals.length; i++) {
+      let currentPoint = historyData.basals[i];
+      let nextPoint = (i + 1 < historyData.basals.length) ? historyData.basals[i+1] : { ts: now, rate: 0.0 };
 
-      if (nextTs < graphStartTime) continue;
+      let startX = graphX + (currentPoint.ts - graphStartTime) * graphW / ninetyMinutesMillis;
+      if (currentPoint.ts < graphStartTime) continue;
+      let endX = graphX + graphW * (nextPoint.ts - graphStartTime) / ninetyMinutesMillis;
 
-      let startX = Math.max(graphX, graphX + Math.round((bTs - graphStartTime) * graphW / ninetyMinutesMillis));
-      let endX = Math.min(graphX + graphW, graphX + Math.round((nextTs - graphStartTime) * graphW / ninetyMinutesMillis));
-
-      let barHeight = (bRate / maxBasal) * BASAL_SCALE;
+      let barHeight = (currentPoint.rate / maxBasal) * BASAL_SCALE;
       let barY = BASELINE_BASALS - barHeight;
+
+      startX = Math.max(graphX, startX);
+      endX = Math.min(graphX + graphW, endX);
 
       g.setColor("#00FFFF").fillRect(startX, barY, endX, BASELINE_BASALS);
       g.setColor("#0000FF").drawLine(startX, barY, endX, barY);
@@ -428,11 +503,11 @@ function drawBottomRightGraph(x, y, w, h) {
       if (lastVerticalBarX < startX) {
         g.drawLine(startX, lastY, startX, barY);
       }
-
-      if (i + 1 < basalCount) {
-        let nextBarHeight = (historyData.basal_rate[i + 1] / maxBasal) * BASAL_SCALE;
-        let nextBarY = BASELINE_BASALS - nextBarHeight;
-        g.drawLine(endX, barY, endX, nextBarY);
+      
+      if (i + 1 < historyData.basals.length) {
+        let nextBarHeight = (nextPoint.rate / maxBasal) * BASAL_SCALE;
+        let nextPointBarY = BASELINE_BASALS - nextBarHeight;
+        g.drawLine(endX, barY, endX, nextPointBarY);
         lastVerticalBarX = endX;
       } else {
         g.drawLine(endX, barY, endX, BASELINE_BASALS);
@@ -440,59 +515,62 @@ function drawBottomRightGraph(x, y, w, h) {
       lastY = barY;
     }
   }
+  
+  // Insulin Rendering
+  historyData.insulin.forEach(t => {
+      let start = Math.round(new Date(t.ts).getTime());
+      if (t.insulin) {
+          let bolusX = graphX + graphW * (start - graphStartTime) / ninetyMinutesMillis;
+          let triangle_half_width = 3;
+          if (bolusX > graphX && bolusX < graphX + graphW) {
 
-  // --- Insulin Rendering ---
-  const insCount = historyData.ins_ts.length;
-  for (let i = 0; i < insCount; i++) {
-    let t = historyData.ins_ts[i];
-    let amt = historyData.ins_amount[i];
-    let bolusX = graphX + Math.round(graphW * (t - graphStartTime) / ninetyMinutesMillis);
-    let triangle_half_width = 3;
+              // 1. Define the 3 vertices of the triangle
+              let baseline = BASELINE_BOLUSES;
+              if (+t.amount > 0.9) {
+                baseline -= 8;
+              }
+              const y_top = baseline + 8; // Top top of the triangle
+              const y_bottom = y_top + 0.866 * triangle_half_width * 2; // Bottom of the triangle (Pythagoras)
 
-    if (bolusX > graphX && bolusX < graphX + graphW) {
-      let baseline = BASELINE_BOLUSES;
-      if (+amt > 0.9) baseline -= 8;
+              const vertices = [
+                bolusX, y_top,
+                bolusX - triangle_half_width, y_bottom,  
+                bolusX + triangle_half_width, y_bottom
+              ];
 
-      const y_top = baseline + 8;
-      const y_bottom = y_top + 0.866 * triangle_half_width * 2;
-
-      g.setColor("#0000FF").fillPoly([
-        bolusX, y_top,
-        bolusX - triangle_half_width, y_bottom,
-        bolusX + triangle_half_width, y_bottom
-      ]);
-    }
-  }
-
-  // --- Glucose Line Rendering ---
-  const bgCount = historyData.bg_ts.length;
-  if (bgCount >= 1) {
-    for (let i = 0; i < bgCount - 1; i++) {
-      let t1 = historyData.bg_ts[i];
-      let sgv1 = historyData.bg_sgv[i];
-      let t2 = historyData.bg_ts[i + 1];
-      let sgv2 = historyData.bg_sgv[i + 1];
-
-      let p1_mmol = sgv1 / MGDL_TO_MMOL;
-      let p2_mmol = sgv2 / MGDL_TO_MMOL;
-
-      let x1 = Math.round(graphX + graphW * (t1 - graphStartTime) / ninetyMinutesMillis);
-      let y1 = Math.round(BASELINE_BG - (((p1_mmol - MIN_MMOL_SCALE) / (MAX_MMOL_SCALE - MIN_MMOL_SCALE)) * h));
-      let x2 = Math.round(graphX + graphW * (t2 - graphStartTime) / ninetyMinutesMillis);
-      let y2 = Math.round(BASELINE_BG - (((p2_mmol - MIN_MMOL_SCALE) / (MAX_MMOL_SCALE - MIN_MMOL_SCALE)) * h));
-
-      if (x1 >= graphX && x2 <= graphX + graphW) {
-        if (p1_mmol < LOW_MMOL || p2_mmol < LOW_MMOL || p1_mmol > HIGH_MMOL || p2_mmol > HIGH_MMOL) {
-          g.setColor("#FF0000");
-        } else {
-          g.setColor("#00FF00");
+              g.setColor("#0000FF");
+              g.fillPoly(vertices);
+          }
+      }
+  });
+  
+  // Glucose Line Rendering
+  if (historyData.glucose.length >= 1) {
+    for (let i = 0; i < historyData.glucose.length; i++) {
+        let p1 = historyData.glucose[i];
+        let p1_mmol = p1.sgv / MGDL_TO_MMOL;
+        let p2 = currentStatusData; 
+        if (i < historyData.glucose.length-1){
+          p2 = historyData.glucose[i+1];
         }
-        for (let xo = -1; xo < 2; xo++) {
-          for (let yo = -1; yo < 2; yo++) {
-            g.drawLine(x1 + xo, y1 + yo, x2 + xo, y2 + yo);
+        let p2_mmol = p2.sgv / MGDL_TO_MMOL;
+        let x1 = Math.round(graphX + graphW * (p1.ts - graphStartTime) / ninetyMinutesMillis);
+        let y1 = Math.round(BASELINE_BG - (((p1_mmol - MIN_MMOL_SCALE) / (MAX_MMOL_SCALE - MIN_MMOL_SCALE)) * h));
+        let x2 = Math.round(graphX + graphW * (p2.ts - graphStartTime) / ninetyMinutesMillis);
+        let y2 = Math.round(BASELINE_BG - (((p2_mmol - MIN_MMOL_SCALE) / (MAX_MMOL_SCALE - MIN_MMOL_SCALE)) * h));
+        
+        if (x1 >= graphX && x2 <= graphX+graphW) {
+          if (p1_mmol < LOW_MMOL || p2_mmol< LOW_MMOL || p1_mmol > HIGH_MMOL || p2_mmol > HIGH_MMOL) {
+            g.setColor("#FF0000");
+          } else {
+             g.setColor("#00FF00");
+          }
+          for (let xo = -1; xo < 2; xo++){
+            for (let yo = -1; yo < 2; yo++){
+              g.drawLine(x1+xo, y1+yo, x2+xo, y2+yo);
+            }
           }
         }
-      }
     }
   }
 }

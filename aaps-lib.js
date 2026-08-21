@@ -1,5 +1,5 @@
 // aaps-uilib.js
-exports.showNumberEntry = function(title, initialValue, step, unit, callback) {
+exports.showNumberEntry = function(title, initialValue, step, unit, allowNegative, callback) {
   let value = initialValue;
   const W = g.getWidth();
   const H = g.getHeight();
@@ -30,7 +30,12 @@ exports.showNumberEntry = function(title, initialValue, step, unit, callback) {
     touch: (btn, xy) => {
       if (xy.y > H / 2 - 30 && xy.y < H / 2 + 30) {
         if (xy.x < 70) { // Decrease
-          value = Math.max(0, value - step);
+          if (allowNegative){
+            value = value - step;
+          }
+          else {
+            value = Math.max(0, value - step);
+          }
           draw();
         } else if (xy.x > W - 70) { // Increase
           value += step;
